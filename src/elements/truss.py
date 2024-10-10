@@ -7,7 +7,8 @@ from element import ElementCreator, Element
 
 
 class TrussCreator(ElementCreator):
-    """This is the class that contains the truss element template, that
+    """
+    This is the class that contains the truss element template, that
     is, it contains the information that is shared by all the trusses
     that have the same properties.
     """
@@ -87,6 +88,21 @@ class trussElement(Element):
         d = r/L
         b = np.array([[-d[0]/L, -d[1]/L, d[0]/L, d[1]/L]])
         return b
+
+
+    def bucklingCoeff(self, N):
+        """
+        arguments:
+        N: axial force
+
+        returns:
+        Computes buckling coefficient phi for truss.
+        phi < 1, bar is safe. The farther from 1, the better
+        phi = 1, bar is buckling.
+        phi > 1, bar has buckled!
+        """
+        phi = 0.0
+        return phi
 
 
     def integrateEnergy(self):
@@ -169,9 +185,10 @@ class trussElement(Element):
         E = self.theType.YoungModulus
         A = self.theType.area
         L = self.L
+        N = E * A * epsilon
 
         Vint = 0.5 * E * A * epsilon * epsilon * self.L
-        buck = 0.0
+        buck = self.bucklingCoeff(N)
 
         print("Node 1 DOFS:", nodei.DOFS)
         print("Node 2 DOFS:", nodej.DOFS)
@@ -195,7 +212,9 @@ class trussElement(Element):
         epsilon = np.matmul(b, disp)[0,0]
         E = self.theType.YoungModulus
         A = self.theType.area
-        buck = 0.0
+        N = E * A * epsilon
+
+        buck = self.bucklingCoeff(N)
 
         if (name == "epsilon"):
             r = epsilon

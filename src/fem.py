@@ -1073,4 +1073,4 @@ class TransientAnalysis(Analysis):
         # Postprocessing
         #self.model.mesh.plot()
         #self.model.mesh.plotDeformed(self.model.getSolution())
-        self.model.printDetailed()
+        #self.model.printDetailed()
