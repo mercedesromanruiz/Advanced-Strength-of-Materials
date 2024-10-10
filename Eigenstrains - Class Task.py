@@ -60,9 +60,9 @@ def createModel():
     # 'A' is the cross section area
     
     elmtTypes = {} # do not change this line
-    elmtTypes["bars"] = TrussCreator({"E": 210.0e9,
-                                      "A": 0.02,
-                                      "e0": 0.03})
+    elmtTypes["bars"] = TrussCreator({"E":210.0e9,
+                                      "A":0.02,
+                                      "eigenstrain":0.03})
 
     # constrain a vertexset: (doflabel, value) for all nodes in the set
     constraints = defaultdict(list) # do not change this line
