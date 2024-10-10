@@ -125,7 +125,7 @@ class trussElement(Element):
         weight = rho * g * A * self.L
         fext = np.array([0.0, -0.5*weight, 0.0, -0.5*weight])
 
-        energy = 0.5 * E * A * epsilon * epsilon * self.L - np.dot(disp,fext)
+        energy = 0.5 * E * A * (epsilon - e0)**2 * self.L - np.dot(disp,fext)
         return energy
 
 
@@ -146,7 +146,7 @@ class trussElement(Element):
 
         disp = np.array([nodei.U[0], nodei.U[1], nodej.U[0], nodej.U[1]])
         epsilon = np.matmul(b, disp)[0]
-        N = E * A * epsilon
+        N = E * A * (epsilon - e0)
 
         BTs = b.T * N * self.L
         weight = rho * g * A * self.L
