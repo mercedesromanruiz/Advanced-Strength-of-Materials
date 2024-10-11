@@ -69,7 +69,7 @@ def createModel():
     constraints["Izq"].append((0, 0.0))
     constraints["Izq"].append((1, 0.0))
     
-    constraints["Der"].append((0, 0.0))
+    constraints["Der"].append((0, 1.0))
     constraints["Der"].append((1, 0.0))
 
     # load a vertexset: (doflabel, value) for all nodes in the set
