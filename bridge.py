@@ -70,7 +70,7 @@ def createModel():
     elmtTypes = {} # do not change this line
 
     EA = 2.1e11 # Steel Stiffness
-    A = 180e-4 # Bar Area
+    A = 180e-2 # Bar Area
     elmtTypes["bars"] = TrussCreator({"E": EA / A,
                                       "A": A,
                                       "density": 7800,
