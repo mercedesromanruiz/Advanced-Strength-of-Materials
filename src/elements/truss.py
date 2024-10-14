@@ -101,7 +101,16 @@ class trussElement(Element):
         phi = 1, bar is buckling.
         phi > 1, bar has buckled!
         """
-        phi = 0.0
+        r = (self.theType.area / math.pi)**(1/2)
+        L = self.L
+        E = self.theType.YoungModulus
+
+        Pcrit = math.pi**3 / 2 * r**4 / L**2 *E
+
+        if N < 0:
+            phi = abs(N) / Pcrit
+        else:
+            phi = 0.0
         return phi
 
 
