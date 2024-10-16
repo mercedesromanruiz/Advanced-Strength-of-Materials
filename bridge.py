@@ -57,7 +57,7 @@ def createModel():
     #               Create global data structures
     # --------------------------------------------------------
     theMesh = Mesh(vertices, cells, vertexsets, cellsets)
-    theMesh.print()
+    #theMesh.print()
 
     # --------------------------------------------------------
     #  Model: elements types, constraints, and loading on the mesh
@@ -70,7 +70,7 @@ def createModel():
     elmtTypes = {} # do not change this line
 
     EA = 2.1e11 # Steel Stiffness
-    A = 180e-2 # Bar Area
+    A = 1e-2
     elmtTypes["bars"] = TrussCreator({"E": EA / A,
                                       "A": A,
                                       "density": 7800,
