@@ -949,6 +949,7 @@ class Analysis:
         self.model = aModel
         self.x = []
 
+
     def findLinearizedSolution(self):
         """
         Solves the global system of equations, given the tangent and

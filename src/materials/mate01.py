@@ -1,14 +1,14 @@
 # Generated with SMOP  0.41
 from libsmop import *
-# 
+#
 
     ##mate01.m
 ## steel, elastic perfectly plastic E=29000Ksi, Sigma_y = 50ksi
 ## arguments(2)
 ##               isw: task
 ##               e:   strain
-    
-    
+
+
 @function
 def mate01(isw=None,e=None,*args,**kwargs):
     varargin = mate01.varargin
@@ -18,7 +18,7 @@ def mate01(isw=None,e=None,*args,**kwargs):
     ss=sign(e)
     epsy=0.0017
     sigy=50
-    #----------------------------------------------------------------------
+#----------------------------------------------------------------------
 #      Tangent
 #----------------------------------------------------------------------
     if isw == 1:
@@ -38,4 +38,3 @@ def mate01(isw=None,e=None,*args,**kwargs):
                     r=copy(sigy)
                 else:
                     r=- sigy
-    
