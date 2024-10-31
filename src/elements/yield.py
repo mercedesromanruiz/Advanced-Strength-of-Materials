@@ -63,7 +63,6 @@ def testStress():
     print("\n3. Pure shear stress tensor:\n", stress)
     print("\n -- von Mises equivalent stress", equivalentStress("vonmises", stress))
     print(" -- Tresca equivalent stress", equivalentStress("tresca", stress))
-    print(" -- Tresca error: ", 2*s - equivalentStress("tresca", stress))
 
     m = np.random.rand(3, 3)
     stress = 0.5*(m+m.T)
