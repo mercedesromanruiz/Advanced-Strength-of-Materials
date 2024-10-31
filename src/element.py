@@ -122,25 +122,27 @@ class ShapeFunction:
         self.grad = np.array(0)
 
 
-def evaluateShapeFunctions(el, qp, theShp):
-    """ Evaluates a list of shape functions for an element and
-    a quadrature point, and also computes the jacobian of
-    the element transformation. Careful, the list theShp must
-    have the same number of elements and the number of nodes
-    in the element el.
+def evaluateShapeFunctions(el, qp):
     """
-    nn = len(el.theNodes)
+    Evaluates a list of shape functions for an element and
+    a quadrature point, and also computes the jacobian j of
+    the element transformation.
+    """
+    nn = el.getNNodes()
+
+    shp = [ShapeFunction() for i in range(nn)]
+
     for a in range(nn):
-        theShp[a].grad = np.zeros(el.theType.plottingShape)
+        shp[a].grad = np.zeros(el.theType.plottingShape)
 
     if (el.theType.plottingShape == 1):
-        j = evaluateShapeFunctions1d(theShp, el.theNodes, qp)
+        j = evaluateShapeFunctions1d(shp, el.theNodes, qp)
     elif (el.theType.plottingShape == 2):
-        j = evaluateShapeFunctions2d(theShp, el.theNodes, qp)
+        j = evaluateShapeFunctions2d(shp, el.theNodes, qp)
     elif (el.theType.plottingShape == 3):
-        j = evaluateShapeFunctions3d(theShp, el.theNodes, qp)
+        j = evaluateShapeFunctions3d(shp, el.theNodes, qp)
 
-    return j
+    return shp, j
 
 
 def evaluateShapeFunctions1d(theShp, theNodes, qp):

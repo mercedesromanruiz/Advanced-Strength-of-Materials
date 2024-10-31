@@ -116,9 +116,6 @@ class MechanicalElement(Element):
         # extracts nodal displacements from theNodes
         disp = self.buildDisplacementVector()
 
-        # array of unevaluated shape functions
-        phi = [ShapeFunction() for i in range(nen)]
-
         # all the quadrature points, with positions and weights
         quadPoints = quadraturePoints(self)
 
@@ -127,8 +124,8 @@ class MechanicalElement(Element):
         for qp in quadPoints:
 
             # evaluate the shape functions and derivatives at gp
-            j = evaluateShapeFunctions(self, qp, phi)
-            dvol = j * qp.weight
+            phi, J = evaluateShapeFunctions(self, qp)
+            dvol = J * qp.weight
 
             # evaluate the displacement u and grad(u) at the qp
             Uh, gradUh = self.computeUhGradUh(phi, disp)
@@ -155,9 +152,6 @@ class MechanicalElement(Element):
         # extracts nodal displacements from the nodes
         disp = self.buildDisplacementVector()
 
-        # array of unevaluated shape functions
-        phi = [ShapeFunction() for i in range(nen)]
-
         # all the quadrature points, with positions and weights
         quadPoints = quadraturePoints(self)
 
@@ -168,8 +162,8 @@ class MechanicalElement(Element):
         for qp in quadPoints:
 
             # evaluate the shape functions and derivatives at gp
-            j = evaluateShapeFunctions(self, qp, phi)
-            dvol = j * qp.weight
+            phi, J = evaluateShapeFunctions(self, qp)
+            dvol = J * qp.weight
 
             # evaluate the displacement u and grad(u) at the qp
             Uh, gradUh = self.computeUhGradUh(phi, disp)
@@ -201,17 +195,14 @@ class MechanicalElement(Element):
         eye = np.identity(dim)
         K = np.zeros((nen*dim, nen*dim))
 
-        # array of unevaluated shape functions
-        phi = [ShapeFunction() for i in range(nen)]
-
         # all the quadrature points, with positions and weights
         quadPoints = quadraturePoints(self)
 
         for qp in quadPoints:
 
             # evaluate the shape functions and derivatives at gp
-            j = evaluateShapeFunctions(self, qp, phi)
-            dvol = j * qp.weight
+            phi, J = evaluateShapeFunctions(self, qp)
+            dvol = J * qp.weight
 
             for a in range(nen):
                 a0 = dim*a
@@ -254,9 +245,6 @@ class MechanicalElement(Element):
             else:
                 disp.append(np.array([ nd.U[0], nd.U[1], nd.U[2] ]))
 
-        # array of unevaluated shape functions
-        phi = [ShapeFunction() for i in range(nen)]
-
         # all the quadrature points, with positions and weights
         quadPoints = quadraturePoints(self, 1)
         qp = quadPoints[0]
@@ -267,7 +255,8 @@ class MechanicalElement(Element):
         u = np.zeros(dim)
 
         # evaluate the shape functions and derivatives at gp
-        j = evaluateShapeFunctions(self, qp, phi)
+        phi, J = evaluateShapeFunctions(self, qp)
+        dvol = J * qp.weight
 
         # evaluate the displacement at the qp
         u.fill(0.0)
