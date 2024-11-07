@@ -100,7 +100,8 @@ class MechanicalElement(Element):
 
 
     def integrateEnergy(self):
-        """This function integrates the mechanical energy in
+        """
+        This function integrates the mechanical energy in
         one element. This includes the stored energy from the
         deformation and the potential energy of the external body
         forces (bx,by,bz).

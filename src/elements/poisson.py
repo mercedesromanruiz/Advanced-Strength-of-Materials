@@ -220,7 +220,7 @@ class PoissonElement(Element):
             tempOld = 0.0
 
             for a in range(nn):
-                DJ[a] += c/dt*(temp-tempOld)*N[a].value * dvol
+                DJ[a] += 0.0
 
         return DJ
 
@@ -242,7 +242,7 @@ class PoissonElement(Element):
 
             for a in range(nn):
                 for b in range(nn):
-                    DDJ[a,b] += c/dt * N[a] * N[b] * dvol
+                    DDJ[a,b] += 0.0
 
         return DDJ
 

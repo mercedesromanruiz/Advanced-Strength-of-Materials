@@ -22,14 +22,11 @@ class FrameCreator(ElementCreator):
             I: inertia
             W: section modulus
             sigmae: elastic limit
-            sigmaec: elastic limit in compression
-            uadmissible: admissible maximum displacement
             density: density (per unit volume)
             gravity: vertical and downwards
             eigenstrain: from thermal, lack-of-fit, etc
             safetybuck: admissible safety criterion for buckling
             safetysigma: admissible safety criterion for stress
-            safetyu: admissible safety criterion for displacement
 
         """
         self.YoungModulus = properties["E"]
@@ -37,18 +34,11 @@ class FrameCreator(ElementCreator):
         self.inertia = properties["I"]
         self.modulus = properties.get("W", 0.0)
         self.sigmae  = properties.get("sigmae", -1.0)
-        self.sigmaec = properties.get("sigmaec", -1.0)
-        self.uadmissible = properties.get("uadmissible", -1.0)
         self.rho     = properties.get("density", 1.0)
         self.g       = properties.get("gravity", 0.0)
         self.eigenstrain = properties.get("eigenstrain", 0.0)
         self.safetybuck = properties.get("safetybuck", -1.0)
         self.safetysigma = properties.get("safetysigma", -1.0)
-        self.safetyu = properties.get("safetyu", -1.0)
-
-        if self.sigmaec == -1:
-            self.sigmaec = self.sigmae
-        self.plottingShape = 1
 
         # these are the variables that will be plotted by paraview.
         # all of them will have a single value for each beam, so one
@@ -71,7 +61,6 @@ class FrameCreator(ElementCreator):
     def print(self):
         print("Element type: frame")
         print("Young modulus:", self.YoungModulus)
-        print("Elastic limit in compression:", self.sigmaec)
         print("Cross section area:", self.area)
         print("Cross section inertia:", self.inertia)
         print("Section modulus:", self.modulus)
@@ -81,12 +70,9 @@ class FrameCreator(ElementCreator):
         if self.eigenstrain > 0:
             print("Eigenstrain:", self.eigenstrain)
 
-        printIfPositive("Admissible displacement: ", self.uadmissible)
         printIfPositive("Elastic limit: ", self.sigmae)
-        printIfPositive("Elastic limit in compression: ", self.sigmaec)
         printIfPositive("Admissible safety criterion for buckling: ", self.safetybuck)
         printIfPositive("Admissible safety criterion for stresses: ", self.safetysigma)
-        printIfPositive("Admissible safety criterior for displacement: ", self.safetyu)
 
 
 class frameElement(Element):
@@ -252,7 +238,8 @@ class frameElement(Element):
         quadPoints = GaussLobattoPoints(3)
         sigmamax = float('-inf')
         sigmamin = float('inf')
-        Nmin = float('inf')
+        Gstress = float('inf')
+        Gbuck = float('inf')
 
         for k, qp in enumerate(quadPoints):
             x = 0.5*(qp.x + 1)*L
@@ -262,50 +249,33 @@ class frameElement(Element):
             N = epsilon * E * A
             M = kappa * E * II
 
-            # maximum stress. This needs to be programmed
-            sigmamax = max(sigmamax, N/A)
-            sigmamin = min(sigmamin, N/A)
+            Gstress_k, Gbuck_k = self.safetyFactors(N, M)
+            Gstress = min(Gstress, Gstress_k)
+            Gbuck = min(Gbuck, Gbuck_k)
 
-            # minimum axial force
-            Nmin = min(Nmin, N)
+            # maximum stress. This needs to be programmed
+            sigmamin_k, sigmamax_k = self.stressMinMax(N, M)
+            sigmamax = max(sigmamax, sigmamax_k)
+            sigmamin = min(sigmamin, sigmamin_k)
 
             print("\n\tSection", k, " in beam at x:", x)
             print("\tAxial force    : {:6g}".format(N))
             print("\tAxial strain   : {:6g}".format(epsilon))
             print("\tBending moment : {:6g}".format(M))
             print("\tCurvature      : {:6g}".format(kappa))
-            print("\tMaximum stress : {:6g}".format(sigmamax))
-            print("\tMinimum stress : {:6g}".format(sigmamin))
+            print("\tMaximum stress : {:6g}".format(sigmamax_k))
+            print("\tMinimum stress : {:6g}".format(sigmamin_k))
+            print("\tStress safety  : {:6g}".format(Gstress_k))
+            print("\tBuckling safety: {:6g}".format(Gbuck_k))
 
+        # buckling safefy factor for the whole beam
+        print("\nBuckling safety factor: {0:.6g}".format(Gbuck))
 
-        # buckling safefy factor
-        print("")
-        fbuck = float('inf')
-        if self.theType.safetybuck > 0 and Nmin<0:
-            Pcrit = math.pi * math.pi * E * II / L**2
-            fbuck = Pcrit/abs(Nmin)
-            print("Buckling safety factor: {0:.6g}".format(fbuck))
+        # stress safefy factor for the whole beam
+        print("Stress safety factor: {0:.6g}".format(Gstress))
 
-        # stress safefy factor
-        fstress = float('inf')
-        if self.theType.safetysigma > 0:
-            fstress = 333
-            print("Stress safety factor: {0:.6g}".format(fstress))
-
-        # displacement safefy factor
-        fdisp = 1000
-        if self.theType.safetyu > 0:
-            fdisp = 333
-            print("Displacement safety factor: {0:.6g}".format(fdisp))
-
-        fglobal = min(fbuck, fstress, fdisp)
-        if not math.isinf(fglobal):
-            print("Global safety factor: {0:.6g}".format(fglobal))
-            if fglobal > 1:
-                print("Beam satifsfies safety criteria.")
-        else:
-            print("Global safety factor is not needed")
-
+        fglobal = min(Gbuck, Gstress)
+        print("Global safety factor: {0:.6g}".format(fglobal))
 
 
     def result(self, name):
@@ -315,7 +285,6 @@ class frameElement(Element):
         """
         E = self.theType.YoungModulus
         sigmae = self.theType.sigmae
-        sigmac = self.theType.sigmaec
         A = self.theType.area
         W = self.theType.modulus
         II = self.theType.inertia
@@ -330,7 +299,8 @@ class frameElement(Element):
         # any other values might not be modified at the points
         sigmamax = float('-inf')
         sigmamin = float('inf')
-        Nmin = float('inf')
+        Gstress = float('inf')
+        Gbuck = float('inf')
 
         # calculate the maximum and mininum values of sigma in
         # all points, in the three sections: left, right, and center
@@ -343,34 +313,23 @@ class frameElement(Element):
             N = epsilon * E * A
             M = kappa * E * II
 
-            # minimum (compressive) formce
-            Nmin = min(N, Nmin)
+            Gstress_k, Gbuck_k = self.safetyFactors(N, M)
+            Gstress = min(Gstress, Gstress_k)
+            Gbuck = min(Gbuck, Gbuck_k)
 
             # maximum stress. This needs to be programmed
-            sigmamax = max(sigmamax, N/A)
-            sigmamin = min(sigmamin, N/A)
+            sigmamin_k, sigmamax_k = self.stressMinMax(N, M)
+            sigmamax = max(sigmamax, sigmamax_k)
+            sigmamin = min(sigmamin, sigmamin_k)
 
-        # Initialize the global safety factor, if needed
-        safetyCalcultions = False
-        if self.theType.safetybuck>0 or self.theType.safetysigma>0 or self.theType.safetyu>0:
-            safetyCalculations = True
-            fglobal = float('inf')
+        # buckling safefy factor for the whole beam
+        print("\nBuckling safety factor: {0:.6g}".format(Gbuck))
 
-        # buckling safefy factor, if it needs to be calculated
-        if self.theType.safetybuck > 0:
-            fbuck = 333
-            fglobal = min(fglobal, fbuck)
+        # stress safefy factor for the whole beam
+        print("Stress safety factor: {0:.6g}".format(Gstress))
 
-        # stress safefy factor as a function of sigmamax and sigmamin
-        if self.theType.safetysigma > 0:
-            fstress = 333
-            fglobal = min(fglobal, fstress)
-
-        # displacement safefy factor as a function of U
-        fdisp = 1000
-        if self.theType.safetysigma > 0:
-            fdisp = 333
-            fglobal = min(fglobal, fdisp)
+        fglobal = min(Gbuck, Gstress)
+        print("Global safety factor: {0:.6g}".format(fglobal))
 
         # compute some values at the center, for plotting
         qp = quadPoints[1]
@@ -393,7 +352,7 @@ class frameElement(Element):
         elif (name == "M"):
             r = M
 
-        elif (name == "safety" and safetyCalcultions):
+        elif (name == "safety"):
             r = fglobal
 
         else:
@@ -413,6 +372,58 @@ class frameElement(Element):
                       [ 0, 0, 0,-s, c, 0],
                       [ 0, 0, 0, 0, 0, 1]])
         return r
+
+
+    def safetyFactors(self, N, M):
+        """
+        Computes the stress and buckling safety factors.
+
+        Parameters
+        ==========
+        N: axial force
+        M: bending moment
+
+        Output
+        ======
+        Gstress: stress safety factor. Safe is > 1.
+        Gbuck: buckling safety factor. Safe is >1.
+        """
+
+        A = self.theType.area
+        II = self.theType.inertia
+        E = self.theType.YoungModulus
+        sigmae = self.theType.sigmae
+
+        Gstress = float('inf')
+        Gbuck = float('inf')
+
+        return Gstress, Gbuck
+
+
+    def stressMinMax(self, N, M):
+        """
+        Computes the minimum and maximum stresses in a cross section
+        of a beam, given the axial force and bending moment it is
+        subject to. Note that "min" and "max" DO NOT refer to absolute
+        values.
+
+        Parameters
+        ==========
+        N: axial force
+        M: bending moment
+
+        Output
+        ======
+        sigmamin: The minimum normal stress in the cross section.
+        sigmamax: The maximum normal stress in the cross section.
+        """
+        A = self.theType.area
+        W = self.theType.modulus
+
+        sigmamax = 0.0
+        sigmamin = 0.0
+
+        return sigmamin, sigmamax
 
 
 def printIfPositive(title, var):
