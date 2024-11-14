@@ -44,20 +44,16 @@ class Cell:
     """
     def __init__(self, vlist):
         """
-        Cell constructor based on an vertex labels. The datum
-        vertices contains the list itself; the datum dim gives the
-        dimension of the geometry where the cell lives (0-point,
-        1-line, 2-surface, 3-volume)
+        Cell constructor based on an vertex labels.
         """
         self.vertices = vlist
-        self.dim      = 0
 
 
     def __iter__(self):
-       """
-       Returns the iterator object
-       """
-       return CellIterator(self)
+        """
+        Returns the iterator object
+        """
+        return CellIterator(self)
 
 
     def getNVertices(self):
@@ -67,14 +63,15 @@ class Cell:
         return len(self.vertices)
 
 
-    def plot(self, ax):
-        """ Plot a cell in the matplotlib format
-        """
-        p = Polygon(self.vertexCoordinates,
-                    closed=True,
-                    edgecolor='k',
-                    facecolor='coral')
-        ax.add_patch(p)
+
+    # def plot(self, ax):
+    #     """ Plot a cell in the matplotlib format
+    #     """
+    #     p = Polygon(self.vertexCoordinates,
+    #                 closed=True,
+    #                 edgecolor='k',
+    #                 facecolor='coral')
+    #     ax.add_patch(p)
 
 
     def print(self):
@@ -85,9 +82,6 @@ class Cell:
         print("Number of vertices: ", self.getNVertices())
         print("Coodinates of vertices: ")
 
-        #print(self.vertexCoordinates)
-        #for k in self.vertexCoordinates:
-        #    print(k)
 
 
 class CellIterator:
@@ -140,7 +134,7 @@ class Mesh:
         ctype = np.zeros(self.getNCells())
         for c in range(self.getNCells()):
             nv = self.cells[c].getNVertices()
-            dim = self.cells[c].dim
+            dim = len(self.vertexCoordinates[self.cells[c].vertices[0]])
             if nv == 1:
                 ctype[c] = VtkVertex.tid
             elif nv == 2:
