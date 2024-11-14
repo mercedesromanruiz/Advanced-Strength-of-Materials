@@ -25,8 +25,8 @@ class FrameCreator(ElementCreator):
             density: density (per unit volume)
             gravity: vertical and downwards
             eigenstrain: from thermal, lack-of-fit, etc
-            safetybuck: admissible safety criterion for buckling
-            safetysigma: admissible safety criterion for stress
+            fx: horizontal load per unit length (rightwards)
+            fy: vertical load per unit length (upwards)
 
         """
         self.YoungModulus = properties["E"]
@@ -36,9 +36,9 @@ class FrameCreator(ElementCreator):
         self.sigmae  = properties.get("sigmae", -1.0)
         self.rho     = properties.get("density", 1.0)
         self.g       = properties.get("gravity", 0.0)
+        self.fx      = properties.get("fx", 0.0)
+        self.fy      = properties.get("fy", 0.0)
         self.eigenstrain = properties.get("eigenstrain", 0.0)
-        self.safetybuck = properties.get("safetybuck", -1.0)
-        self.safetysigma = properties.get("safetysigma", -1.0)
 
         # these are the variables that will be plotted by paraview.
         # all of them will have a single value for each beam, so one
@@ -58,6 +58,7 @@ class FrameCreator(ElementCreator):
         """
         return 3
 
+
     def print(self):
         print("Element type: frame")
         print("Young modulus:", self.YoungModulus)
@@ -66,13 +67,10 @@ class FrameCreator(ElementCreator):
         print("Section modulus:", self.modulus)
         print("Density:", self.rho)
         print("Gravity:", self.g)
-
-        if self.eigenstrain > 0:
-            print("Eigenstrain:", self.eigenstrain)
-
+        print("Fx:", self.fx)
+        print("Fy:", self.fy)
+        printIfPositive("Eigenstrain: ", self.eigenstrain)
         printIfPositive("Elastic limit: ", self.sigmae)
-        printIfPositive("Admissible safety criterion for buckling: ", self.safetybuck)
-        printIfPositive("Admissible safety criterion for stresses: ", self.safetysigma)
 
 
 class frameElement(Element):
@@ -188,12 +186,14 @@ class frameElement(Element):
 
     def localForce(self):
         rho = self.theType.rho
+        fx = self.theType.fx
+        fy = self.theType.fy
         g = self.theType.g
         L = self.L
-        f = rho*g*math.sin(self.alpha)
-        q = rho*g*math.cos(self.alpha)
+        f = (fy-rho*g)*math.sin(self.alpha) + fx*math.cos(self.alpha)
+        q = (fy-rho*g)*math.cos(self.alpha) - fx*math.sin(self.alpha)
 
-        fv = np.array([-f*L/2, -q*L/2, -q*L*L/12, -f*L/2, -q*L/2, q*L*L/12])
+        fv = np.array([f*L/2, q*L/2, q*L*L/12, f*L/2, q*L/2, -q*L*L/12])
         return fv.T
 
 
@@ -297,8 +297,6 @@ class frameElement(Element):
 
         # initialize values as infinite so as to be updated always
         # any other values might not be modified at the points
-        sigmamax = float('-inf')
-        sigmamin = float('inf')
         Gstress = float('inf')
         Gbuck = float('inf')
 
@@ -316,11 +314,6 @@ class frameElement(Element):
             Gstress_k, Gbuck_k = self.safetyFactors(N, M)
             Gstress = min(Gstress, Gstress_k)
             Gbuck = min(Gbuck, Gbuck_k)
-
-            # maximum stress. This needs to be programmed
-            sigmamin_k, sigmamax_k = self.stressMinMax(N, M)
-            sigmamax = max(sigmamax, sigmamax_k)
-            sigmamin = min(sigmamin, sigmamin_k)
 
         # buckling safefy factor for the whole beam
         print("\nBuckling safety factor: {0:.6g}".format(Gbuck))
