@@ -387,8 +387,20 @@ class frameElement(Element):
         E = self.theType.YoungModulus
         sigmae = self.theType.sigmae
 
-        Gstress = float('inf')
-        Gbuck = float('inf')
+        W = self.theType.modulus
+        sigmamax = (N/A) + abs(M) / W
+        sigmamin = (N/A) - abs(M) / W
+
+        r = (self.theType.area / math.pi)**(1/2)
+        L = self.L
+        Pcrit = math.pi**3 / 2 * r**4 / L**2 *E
+
+        Gstress = float(sigmae / max(sigmamin, sigmamax))
+
+        if N < 0:
+            Gbuck = float(Pcrit / abs(N))
+        else:
+            Gbuck = float('inf')
 
         return Gstress, Gbuck
 
@@ -413,8 +425,8 @@ class frameElement(Element):
         A = self.theType.area
         W = self.theType.modulus
 
-        sigmamax = 0.0
-        sigmamin = 0.0
+        sigmamax = (N/A) + abs(M) / W
+        sigmamin = (N/A) - abs(M) / W
 
         return sigmamin, sigmamax
 
