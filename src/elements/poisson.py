@@ -89,8 +89,8 @@ class PoissonElement(Element):
             N, B = self.matricesNB(shp)
 
             # evaluate the temperature & gradient at the qp
-            temp = 0.0
-            gradTemp = np.zeros((2,1))
+            temp = np.matmul(N, theta)
+            gradTemp = np.matmul(B,theta)
 
             # accumulate energy
             energy += 0.5 * kappa * gradTemp.dot(gradTemp) * dvol
@@ -125,8 +125,8 @@ class PoissonElement(Element):
             # recover N and B matrices
             N, B = self.matricesNB(shp)
 
-            gradTemp = np.zeros((2,1)
-            heatflux = np.zeros((2,1)
+            gradTemp = np.matmul(B,theta)
+            heatflux = -gradTemp * kappa
             res -= np.dot(B.T, heatflux) * dvol + N.T * h * dvol
 
         return res
@@ -158,7 +158,8 @@ class PoissonElement(Element):
 
 
     def integrateJet(self, dt):
-        """This function integrates the transient terms
+        """
+        This function integrates the transient terms
         in the effective energy.
         """
         nn = self.getNNodes()
@@ -184,11 +185,11 @@ class PoissonElement(Element):
             N, B = self.matricesNB(shp)
 
             # evaluate the temperatures at the qp
-            temp = 0.0
-            tempOld = 0.0
+            temp = np.matmul(N, theta)
+            tempOld = np.matmul(N, thetaOld)
 
             # accumulate jet
-            jet += c/(2.0*dt)*(temp-tempOld)**2 * dvol
+            jet += 0.0
         return jet
 
 
@@ -216,8 +217,8 @@ class PoissonElement(Element):
             N, B = self.matricesNB(shp)
 
             # evaluate the temperatures at the qp
-            temp = 0.0
-            tempOld = 0.0
+            temp = np.matmul(N, theta)
+            tempOld = np.matmul(N, thetaOld)
 
             for a in range(nn):
                 DJ[a] += 0.0
@@ -238,7 +239,7 @@ class PoissonElement(Element):
             # evaluate the shape functions and derivatives at gp
             shp, J = evaluateShapeFunctions(self, qp)
             dvol = J * qp.weight
-            N, B = matricesNM(self, shp)
+            N, B = self.matricesNB(shp)
 
             for a in range(nn):
                 for b in range(nn):
@@ -250,18 +251,13 @@ class PoissonElement(Element):
     def matricesNB(self, shp):
         """
         Compute interpolation matrix N and gradient matrix B
-        The variable shp in an array of shape functions
-        each shp[i] has a value and a grad called
-        shp[i].value and shp[i].grad
-        The value is the value of the shape function, the
-        grad is its gradient, a 2x1 array
         """
         nn = self.getNNodes()
         N = np.zeros(nn)
         B = np.zeros((2,nn))
         for a in range(nn):
             N[a] = 0.0
-            B[:,a] = np.zeros((2,1))
+            B[:,a] = np.zeros(2,1)
 
         return N, B
 
@@ -302,9 +298,9 @@ class PoissonElement(Element):
             N, B = self.matricesNB(shp)
 
             # evaluate the temperature at the qp
-            temp = 0.0
-            gradTemp = np.zeros((2,1))
-            heat = np.zeros((2,1))
+            temp = np.matmul(N, theta)
+            gradTemp = np.matmul(B, theta)
+            heat = -gradTemp * kappa
 
         if (name == "temperature"):
             r = temp
