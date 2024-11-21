@@ -114,7 +114,7 @@ class trussElement(Element):
         return phi
 
 
-    def integrateEnergy(self):
+    def integrateEnergy(self, time):
         """
         Integrates the total potential energy in the truss element.
         Returns it value.
@@ -138,7 +138,7 @@ class trussElement(Element):
         return energy
 
 
-    def integrateDEnergy(self):
+    def integrateDEnergy(self, time):
         """
         Compute and return the contribution of the element to
         the equilibrium equations.
@@ -164,7 +164,7 @@ class trussElement(Element):
         return BTs - fext.T
 
 
-    def integrateDDEnergy(self):
+    def integrateDDEnergy(self, time):
         """
         Compute and return the element stiffness matrix.
         """

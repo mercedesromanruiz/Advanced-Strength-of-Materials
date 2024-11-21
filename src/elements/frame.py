@@ -106,26 +106,26 @@ class frameElement(Element):
         """
         node0 = self.theNodes[0]
         node1 = self.theNodes[1]
-        r = node1.coordinates() - node0.coordinates()
         L = self.L
         xi = x/L
 
         bh = np.array([[-1.0/L, 0.0, 0.0, 1.0/L, 0.0, 0.0],
-                       [0.0, L*L*(12*xi-6.0), 2*L**3*(3*xi-2),
-                        0.0, L**2*(6-12*xi), 2*L**3*(3*xi-1)]])
+                       [0.0, (12*xi-6.0)/L**2, (6*xi-4)/L,
+                        0.0, (6-12*xi)/L**2, (6*xi-2)/L]])
 
         r = self.rotation()
         b = np.matmul(bh, r)
         return b
 
 
-    def integrateEnergy(self):
+    def integrateEnergy(self, time):
         """
         Integrates the total potential energy in the frame element.
         Returns it value.
         """
-        k = self.localStiffness()
         r = self.rotation()
+        k = self.localStiffness()
+        bigK = np.matmul(r.T, np.matmul(k,r))
 
         node0 = self.theNodes[0]
         node1 = self.theNodes[1]
@@ -133,16 +133,14 @@ class frameElement(Element):
         U = np.array([node0.U[0], node0.U[1], node0.U[2],
                       node1.U[0], node1.U[1], node1.U[2]])
 
-        bigK = np.matmul(r.T, np.matmul(k,r))
-
-        f = self.localForce()
+        f = self.localForce(time)
         bigF = np.matmul(r.T, f)
 
         energy = 0.5*np.matmul(U, np.matmul(bigK, U)) - np.dot(bigF,U)
         return energy
 
 
-    def integrateDEnergy(self):
+    def integrateDEnergy(self, time):
         """
         Compute and return the contribution of the element to
         the equilibrium equations.
@@ -158,13 +156,13 @@ class frameElement(Element):
 
         bigK = np.matmul(r.T, np.matmul(k,r))
 
-        f = self.localForce()
+        f = self.localForce(time)
         bigF = np.matmul(r.T, f)
         res = np.matmul(bigK, U) - bigF
         return res
 
 
-    def integrateDDEnergy(self):
+    def integrateDDEnergy(self, time):
         """
         Compute and return the element stiffness matrix.
         """
@@ -173,6 +171,43 @@ class frameElement(Element):
         bigK = np.matmul(r.T, np.matmul(k,r))
 
         return bigK
+
+
+    def integrateJet(self, dt, time):
+        """
+        This function integrates the transient terms
+        in the effective energy.
+        """
+        node0 = self.theNodes[0]
+        node1 = self.theNodes[1]
+        V = np.array([node0.V[0], node0.V[1], node0.V[2],
+                      node1.V[0], node1.V[1], node1.V[2]])
+        Vn = np.array([node0.Vold[0], node0.Vold[1], node0.Vold[2],
+                       node1.Vold[0], node1.Vold[1], node1.Vold[2]])
+
+        M = self.massMatrix()
+        jet = 0.5*np.matmul(V-Vn, np.matmul(M,V-Vn))
+        return jet
+
+
+    def integrateDJet(self, dt, time):
+        node0 = self.theNodes[0]
+        node1 = self.theNodes[1]
+        V = np.array([node0.V[0], node0.V[1], node0.V[2],
+                      node1.V[0], node1.V[1], node1.V[2]])
+        Vn = np.array([node0.Vold[0], node0.Vold[1], node0.Vold[2],
+                       node1.Vold[0], node1.Vold[1], node1.Vold[2]])
+
+        M = self.massMatrix()
+        DJ = 1.0/dt * np.matmul(M, V-Vn)
+
+        return DJ
+
+
+    def integrateDDJet(self, dt, time):
+        M = self.massMatrix()
+        DDJ = 1.0/(dt*dt)*M
+        return DDJ
 
 
     def integrateVolume(self):
@@ -184,14 +219,15 @@ class frameElement(Element):
         return vol
 
 
-    def localForce(self):
+    def localForce(self, time):
         rho = self.theType.rho
         fx = self.theType.fx
         fy = self.theType.fy
         g = self.theType.g
+        A = self.theType.area
         L = self.L
-        f = (fy-rho*g)*math.sin(self.alpha) + fx*math.cos(self.alpha)
-        q = (fy-rho*g)*math.cos(self.alpha) - fx*math.sin(self.alpha)
+        f = (fy-rho*g*A)*math.sin(self.alpha) + fx*math.cos(self.alpha)
+        q = (fy-rho*g*A)*math.cos(self.alpha) - fx*math.sin(self.alpha)
 
         fv = np.array([f*L/2, q*L/2, q*L*L/12, f*L/2, q*L/2, -q*L*L/12])
         return fv.T
@@ -215,6 +251,32 @@ class frameElement(Element):
             [    0, -12*EI/L3, -6*EI/L2,     0,  12*EI/L3, -6*EI/L2],
             [    0,   6*EI/L2,   2*EI/L,     0,  -6*EI/L2, 4*EI/L]])
         return k
+
+
+    def massMatrix(self):
+        L = self.L
+        A = self.theType.area
+        rho = self.theType.rho
+
+        m = np.zeros((6,6))
+        m[0,0] = 140.0
+        m[0,3] = m[3,0] = 70.0
+        m[1,1] = 156.0
+        m[1,2] = m[2,1] = 22.0*L
+        m[1,4] = m[4,1] = 54.0
+        m[1,5] = m[5,1] = -13.0*L
+        m[2,2] = 4*L*L
+        m[2,4] = m[4,2] = 13.0*L
+        m[2,5] = m[5,2] = -3.0*L*L
+        m[3,3] = 140.0
+        m[4,4] = 156.0
+        m[4,5] = m[5,4] = -22.0*L
+        m[5,5] = 4.0*L*L
+        m = (rho*A*L/420.0)*m
+
+        r = self.rotation()
+        bigM = np.matmul(r.T, np.matmul(m,r))
+        return bigM
 
 
     def print(self):

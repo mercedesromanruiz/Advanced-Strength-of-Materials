@@ -64,7 +64,7 @@ class PoissonElement(Element):
         return 1
 
 
-    def integrateEnergy(self):
+    def integrateEnergy(self, time):
         """
         This function integrates the thermal energy in
         one element.
@@ -99,7 +99,7 @@ class PoissonElement(Element):
         return energy
 
 
-    def integrateDEnergy(self):
+    def integrateDEnergy(self, time):
         '''
         Calculates the contribution of one element to the residual, that is,
         the gradient of the potential energy
@@ -132,7 +132,7 @@ class PoissonElement(Element):
         return res
 
 
-    def integrateDDEnergy(self):
+    def integrateDDEnergy(self, time):
         '''
         Computes the element contribution to the global conductivity matrix
         '''
@@ -157,7 +157,7 @@ class PoissonElement(Element):
         return K
 
 
-    def integrateJet(self, dt):
+    def integrateJet(self, dt, time):
         """
         This function integrates the transient terms
         in the effective energy.
@@ -193,7 +193,7 @@ class PoissonElement(Element):
         return jet
 
 
-    def integrateDJet(self, dt):
+    def integrateDJet(self, dt, time):
         nn = self.getNNodes()
         c = self.theType.capacity
 
@@ -226,7 +226,7 @@ class PoissonElement(Element):
         return DJ
 
 
-    def integrateDDJet(self, dt):
+    def integrateDDJet(self, dt, time):
         nn = self.getNNodes()
         c = self.theType.capacity
 

@@ -8,6 +8,7 @@ Classes for finite element analysis in pyris
 """
 
 import numpy as np
+import math
 from numpy import linalg as LA
 from scipy.sparse import lil_matrix
 from scipy.sparse.linalg import spsolve
@@ -104,6 +105,21 @@ class CellIterator:
            return result
        # End of Iteration
        raise StopIteration
+
+
+class Load:
+
+    # def __new__(cls, *args, **kwargs):
+    #     instance = super().__new__(cls)
+    #     instance.scaling = "t"
+    #     instance.dof = -1
+    #     instance.value = 0
+
+
+    def __init__(self,*, dof=-1, value=0.0, scaling='t'):
+        self.scaling = scaling
+        self.dof = dof
+        self.value = value
 
 
 class Mesh:
@@ -323,7 +339,8 @@ class Node:
     """
 
     def __init__(self, label, coordinates):
-        """ The constructor of the Node only needs the Vertex that
+        """
+        The constructor of the Node only needs the Vertex that
         it holds.
         """
         self.label  = label
@@ -331,6 +348,8 @@ class Node:
         self.DOFS = []
         self.U = np.empty(shape=(1,0))
         self.Uold = np.empty(shape=(1,0))
+        self.V = np.empty(shape=(1,0))
+        self.Vold = np.empty(shape=(1,0))
 
 
     def allocateDOFS(self, el):
@@ -352,6 +371,8 @@ class Node:
 
         self.U = np.zeros(len(self.DOFS))
         self.Uold = np.zeros(len(self.DOFS))
+        self.V = np.zeros(len(self.DOFS))
+        self.Vold = np.zeros(len(self.DOFS))
 
 
     def constrainDOF(self, doflabel, dofvalue):
@@ -374,8 +395,10 @@ class Node:
 
 
     def getNDOFs(self):
-        """Get the number of active DOFs in the node structure. It does
-        not count constrained DOFs"""
+        """
+        Get the number of active DOFs in the node structure. It does
+        not count constrained DOFs
+        """
         d = 0
         for n in self.DOFS:
             if (n >= 0):
@@ -384,13 +407,16 @@ class Node:
 
 
     def getNTotalDOFs(self):
-        """Get the total number of DOFs in one node structure, counting
-        both free and constrained data"""
+        """
+        Get the total number of DOFs in one node structure, counting
+        both free and constrained data
+        """
         return len(self.DOFS)
 
 
     def numberConsecutiveDOFs(self, nextdof):
-        """After the DOF of a node have been created, and those that
+        """
+        After the DOF of a node have been created, and those that
         are constrained have been marked, this function needs to be
         called so that the DOFs are given global numbers, starting
         from the count nextdof.
@@ -497,10 +523,12 @@ class Model:
 
     def commitCurrentState(self):
         """
-        Moves the solution from U to Uold.
+        Moves the solution from tk to tk+1.
         """
         for nd in self.nodes:
             nd.Uold = np.copy(nd.U)
+            nd.Vold = np.copy(nd.V)
+            nd.V    = np.zeros(nd.getNTotalDOFs())
 
 
     def dumpSolution(self, step=None):
@@ -570,7 +598,6 @@ class Model:
                 cd[e] = elmt.result(name)
             cellData[name] = cd
 
-        print("Dumping solution to paraview file 'solution.vtu'")
         FILE_PATH = "./solution"
         try:
             os.remove(FILE_PATH + ".vtu")
@@ -580,21 +607,24 @@ class Model:
         if step is not None:
             FILE_PATH = "./solution" + str(step)
 
+        print("Dumping solution to paraview file", FILE_PATH)
         unstructuredGridToVTK(FILE_PATH, x, y, z, connectivity = np.array(conn),
                               offsets = offset, cell_types = ctype,
                               cellData = cellData, pointData = pointData)
 
 
-    def errorNorm(self):
-        """ Computes the error in the current solution. In an equilibrium
+    def errorNorm(self, time):
+        """
+        Computes the error in the current solution. In an equilibrium
         point, the energy should be minimum and the error should be zero.
         """
-        self.integrateDEnergy()
+        self.integrateDEnergy(time)
         return LA.norm(self.residual)
 
 
     def getNDOFs(self):
-        """ Compute the total number of (free) degrees of freedom in a model.
+        """
+        Compute the total number of (free) degrees of freedom in a model.
         """
         d = 0
         for nd in self.nodes:
@@ -603,8 +633,10 @@ class Model:
 
 
     def getNAvailableDOFs(self):
-        """ the the number of available degrees of freedom in the model. These
-        include the true dofs and the constrained dofs """
+        """
+        Get the number of available degrees of freedom in the model. These
+        include the true dofs and the constrained dofs
+        """
         d = 0
         for nd in self.mesh.nodes:
             d += nd.getNTotalDOFs()
@@ -612,13 +644,16 @@ class Model:
 
 
     def getNode(self, nodelabel) -> Node:
-        """ Return a node in a model, given its label.
+        """
+        Return a node in a model, given its label.
         """
         return self.nodes[nodelabel]
 
 
     def getSolution(self):
-        """ Return an array with the solution in all the nodes """
+        """
+        Return an array with the solution in all the nodes
+        """
         c = 0
         sol = np.zeros((self.mesh.getNVertices(), self.nodes[0].getNTotalDOFs()))
         for nd in self.nodes:
@@ -638,7 +673,7 @@ class Model:
             self.assembleBmatrix(B, el, k)
 
 
-    def integrateEnergy(self) -> float:
+    def integrateEnergy(self, time) -> float:
         """
         Loops over all elements adding up their internal energy
         and then substract the energy that comes from the external
@@ -646,44 +681,71 @@ class Model:
         """
         energy = 0.0
         for k, el in self.elements.items():
-            energy += el.integrateEnergy()
+            energy += el.integrateEnergy(time)
+
+        # for vertexsetName in self.loading.keys() :
+        #     for forcePair in self.loading[vertexsetName]:
+        #         nodeLabels = self.mesh.vertexsets[vertexsetName]
+        #         for label in nodeLabels:
+        #             nd  = self.getNode(label)
+        #             dof = nd.DOFS[forcePair[0]]
+        #             f   = forcePair[1]*time
+        #             if (dof > -1):
+        #                 self.residual[dof] -= f
 
         for vertexsetName in self.loading.keys() :
-            for forcePair in self.loading[vertexsetName]:
-                nodeLabels = self.mesh.vertexsets[vertexsetName]
-                for label in nodeLabels:
-                    nd = self.getNode(label)
-                    u  = nd.U[forcePair[0]]
-                    f  = forcePair[1]
-                    energy -= f*u
+            load = self.loading[vertexsetName]
+            nodeLabels = self.mesh.vertexsets[vertexsetName]
+            for label in nodeLabels:
+                nd = self.getNode(label)
+                u = nd.U[load.dof]
+                t = time
+                f = load.value * eval(load.scaling,locals(),
+                                      {'sqrt': math.sqrt, 'pow': math.pow, 'sin': math.sin})
+                energy -= f*u
 
         self.energy = energy
         return energy
 
 
-    def integrateDEnergy(self):
-        """Integrates the gradient of the energy of the whole model, which
+    def integrateDEnergy(self, time):
+        """
+        Integrates the gradient of the energy of the whole model, which
         corresponds to the equilibrium equations (i.e. the residual). For
         that it computes the contribution of the elements (internal) and
         then the external loading.
         """
         self.residual.fill(0.0)
         for k, el in self.elements.items():
-            DE = el.integrateDEnergy()
+            DE = el.integrateDEnergy(time)
             self.assembleDEnergy(DE, el)
 
         for vertexsetName in self.loading.keys() :
-            for forcePair in self.loading[vertexsetName]:
-                nodeLabels = self.mesh.vertexsets[vertexsetName]
-                for label in nodeLabels:
-                    nd  = self.getNode(label)
-                    dof = nd.DOFS[forcePair[0]]
-                    f   = forcePair[1]
-                    if (dof > -1):
-                        self.residual[dof] -= f
+            load = self.loading[vertexsetName]
+            nodeLabels = self.mesh.vertexsets[vertexsetName]
+            for label in nodeLabels:
+                nd = self.getNode(label)
+                dof = nd.DOFS[load.dof]
+                t = time
+                sc = eval(load.scaling,locals(),
+                          {'sqrt': math.sqrt, 'pow': math.pow, 'sin': math.sin})
+                f = load.value * sc
+                if (dof > -1):
+                    self.residual[dof] -= f
 
 
-    def integrateDDEnergy(self):
+        # for vertexsetName in self.loading.keys() :
+        #     for forcePair in self.loading[vertexsetName]:
+        #         nodeLabels = self.mesh.vertexsets[vertexsetName]
+        #         for label in nodeLabels:
+        #             nd  = self.getNode(label)
+        #             dof = nd.DOFS[forcePair[0]]
+        #             f   = forcePair[1]*time
+        #             if (dof > -1):
+        #                 self.residual[dof] -= f
+
+
+    def integrateDDEnergy(self, time):
         """
         Integrates the tangent stiffness matrix by assembling the contributions
         of all the elements in the model.
@@ -691,47 +753,48 @@ class Model:
         self.setTangentToZero()
 
         for k, el in self.elements.items():
-            DDE = el.integrateDDEnergy()
+            DDE = el.integrateDDEnergy(time)
             self.assembleDDEnergy(DDE, el)
 
 
-    def integrateJet(self, dt) -> float:
+    def integrateJet(self, dt, time) -> float:
         """
         Loops over all elements adding up the transient
         term to the effective energy.
         """
-        self.integrateEnergy()
+        self.integrateEnergy(time)
 
         jet = 0.0
         for k, el in self.elements.items():
-            jet += el.integrateJet(dt)
+            jet += el.integrateJet(dt, time)
 
         self.energy += jet
         return self.energy
 
 
-    def integrateDJet(self, dt):
+    def integrateDJet(self, dt, time):
         """Integrates the gradient of the energy of the whole model, which
         corresponds to the equilibrium equations (i.e. the residual). For
         that it computes the contribution of the elements (internal) and
         then the external loading.
         """
-        self.integrateDEnergy()
+        self.integrateDEnergy(time)
 
         for k, el in self.elements.items():
-            DE = el.integrateDJet(dt)
-            self.assembleDEnergy(DE, el)
+            DJ = el.integrateDJet(dt, time)
+            self.assembleDEnergy(DJ, el)
 
 
-    def integrateDDJet(self, dt):
-        """Integrates the tangent stiffness matrix by assembling the contributions
+    def integrateDDJet(self, dt, time):
+        """
+        Integrates the tangent stiffness matrix by assembling the contributions
         of all the elements in the model.
         """
-        self.integrateDDEnergy()
+        self.integrateDDEnergy(time)
 
         for k, el in self.elements.items():
-            DDE = el.integrateDDJet(dt)
-            self.assembleDDEnergy(DDE, el)
+            DDJ = el.integrateDDJet(dt, time)
+            self.assembleDDEnergy(DDJ, el)
 
 
     def integrateVolume(self) -> float:
@@ -746,16 +809,18 @@ class Model:
         return vol
 
 
-    def jetNorm(self, dt):
-        """ Computes the error in the current solution. In an equilibrium
+    def jetNorm(self, dt, time):
+        """
+        Computes the error in the current solution. In an equilibrium
         point, the energy should be minimum and the error should be zero.
         """
-        self.integrateDJet(dt)
+        self.integrateDJet(dt, time)
         return LA.norm(self.residual)
 
 
     def maximumElementValue(self, name):
-        """ Determines the maximum absolute value of the variable 'name' in all
+        """
+        Determines the maximum absolute value of the variable 'name' in all
         the elements of the model.
         """
         large = -1e12
@@ -954,25 +1019,27 @@ class Analysis:
         self.x = spsolve(self.model.sparseTangent, self.model.residual)
 
 
-    def info(self):
-        self.model.integrateEnergy()
-        self.model.integrateDEnergy()
+    def info(self, time):
+        self.model.integrateEnergy(time)
+        self.model.integrateDEnergy(time)
         print("\n-----------------------------------------------------------")
-        print("                 Initial data")
+        print("    Info at time t:", time)
         print("-----------------------------------------------------------")
         print("Energy in the solution: ", self.model.energy)
         print("Error in the solution: ", self.model.errorNorm())
 
 
-    def localizeSolutionToNodes(self):
+    def localizeSolutionToNodes(self, dt):
         """
         Use the solution self.x to update the degrees of freedom
         in all the dofs of the model.
         """
         for nd in self.model.nodes:
             for i in range(nd.getNTotalDOFs()):
-                if (nd.DOFS[i] > -1):
-                    nd.U[i] = nd.U[i] - self.x[nd.DOFS[i]]
+                globalEq = nd.DOFS[i]
+                if (globalEq > -1):
+                    nd.U[i] = nd.U[i] - self.x[globalEq]
+                    nd.V[i] = (nd.U[i] - nd.Uold[i])/dt
 
         self.x.fill(0.0)
 
@@ -982,6 +1049,7 @@ class Analysis:
             for i in range(nd.getNTotalDOFs()):
                 if (nd.DOFS[i] > -1):
                     nd.U[i] = 0.0
+                    nd.V[i] = 0.0
 
         self.x.fill(0.0)
 
@@ -1001,19 +1069,19 @@ class StaticLinearAnalysis(Analysis):
 
     def solve(self):
         # solve the linearized problem
-        self.model.integrateDEnergy()
-        self.model.integrateDDEnergy()
+        self.model.integrateDEnergy(0.0)
+        self.model.integrateDDEnergy(0.0)
         self.findLinearizedSolution()
-        self.localizeSolutionToNodes()
+        self.localizeSolutionToNodes(1.0)
 
         # Postprocessing
         print("\n-----------------------------------------------------------")
         print("       Solving the linear systems of equations K U = F")
         print("-----------------------------------------------------------")
-        self.model.integrateEnergy()
-        self.model.integrateDEnergy()
+        self.model.integrateEnergy(1.0)
+        self.model.integrateDEnergy(1.0)
         print("Energy in the solution: ", self.model.energy)
-        print("Error in the solution: ", self.model.errorNorm())
+        print("Error in the solution: ", self.model.errorNorm(1.0))
 
         #self.model.mesh.plot()
         #self.model.mesh.plotDeformed(self.model.getSolution())
@@ -1039,33 +1107,29 @@ class TransientAnalysis(Analysis):
 
 
     def solve(self):
-        # information about the intial (zero) solution
         nsteps = int(self.tf//self.dt)
-        #self.model.openParaviewfile()
-        #self.model.mesh.dumpMeshForParaview()
-
+        t = 0.0
+        self.model.dumpSolution(0)
         for k in range(nsteps):
+            t += self.dt
             print("\n-----------------------------------------------------------")
-            print("     Solving step number ", k+1)
+            print("     Solving step number", k+1, ", time:", t)
             print("-----------------------------------------------------------")
-            self.model.integrateJet(self.dt)
-            self.model.integrateDJet(self.dt)
+            self.model.integrateJet(self.dt, t)
+            self.model.integrateDJet(self.dt, t)
             print("Effective energy in the solution: ", self.model.energy)
-            print("Error in the transient solution: ", self.model.jetNorm(self.dt))
+            print("Error in the transient solution: ",
+                  self.model.jetNorm(self.dt, t))
 
             # solve the linearized problem
-            self.model.integrateDDJet(self.dt)
+            self.model.integrateDDJet(self.dt, t)
             self.findLinearizedSolution()
             print("\n...... Solving the linear system of equations K U = F .......\n")
-            self.localizeSolutionToNodes()
-            self.model.integrateJet(self.dt)
-            self.model.integrateDJet(self.dt)
+            self.localizeSolutionToNodes(self.dt)
+            self.model.integrateJet(self.dt, t)
+            self.model.integrateDJet(self.dt, t)
             print("Effective energy in the solution: ", self.model.energy)
-            print("Error in the transient solution: ", self.model.jetNorm(self.dt))
-            self.model.dumpSolution(k)
+            print("Error in the transient solution: ",
+                  self.model.jetNorm(self.dt, t))
+            self.model.dumpSolution(k+1)
             self.model.commitCurrentState()
-
-        # Postprocessing
-        #self.model.mesh.plot()
-        #self.model.mesh.plotDeformed(self.model.getSolution())
-        #self.model.printDetailed()
