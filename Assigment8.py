@@ -79,8 +79,8 @@ constraints["Clamp"].append((2, 0.0))
 
 
 loading = {}
-F = 1000
-loading["TopRight"] = Load(dof=1, value=F, scaling='t*(t<=10)')
+F = 10000
+loading["TopRight"] = Load(dof=0, value=F, scaling='t*(t<=10)')
 
 theModel = Model(theMesh, elmtTypes, constraints, loading)
 
