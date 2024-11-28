@@ -64,17 +64,6 @@ class Cell:
         return len(self.vertices)
 
 
-
-    # def plot(self, ax):
-    #     """ Plot a cell in the matplotlib format
-    #     """
-    #     p = Polygon(self.vertexCoordinates,
-    #                 closed=True,
-    #                 edgecolor='k',
-    #                 facecolor='coral')
-    #     ax.add_patch(p)
-
-
     def print(self):
         """
         Basic information of a cell.
@@ -82,7 +71,6 @@ class Cell:
         print("Cell information")
         print("Number of vertices: ", self.getNVertices())
         print("Coodinates of vertices: ")
-
 
 
 class CellIterator:
@@ -107,16 +95,17 @@ class CellIterator:
        raise StopIteration
 
 
-class Load:
+class Constraint:
 
-    # def __new__(cls, *args, **kwargs):
-    #     instance = super().__new__(cls)
-    #     instance.scaling = "t"
-    #     instance.dof = -1
-    #     instance.value = 0
+    def __init__(self,*, dof, value, scaling='t'):
+        self.scaling = scaling
+        self.dof = dof
+        self.value = value
 
 
-    def __init__(self,*, dof=-1, value=0.0, scaling='t'):
+class Loading:
+
+    def __init__(self,*, dof, value, scaling='t'):
         self.scaling = scaling
         self.dof = dof
         self.value = value
@@ -250,19 +239,23 @@ class Mesh:
 
 
     def getNVertices(self):
-        """ Get the number of vertices in the mesh.
+        """
+        Get the number of vertices in the mesh.
         """
         return len(self.vertexCoordinates)
 
 
     def getNCells(self):
-        """ Get the number of cells in the mesh.
+        """
+        Get the number of cells in the mesh.
         """
         return len(self.cells)
 
 
     def plot(self):
-        """ Plots a simplified mesh """
+        """
+        Plots a simplified mesh
+        """
         self.dumpMeshForParaview()
         #vmesh = pv.read('mesh.vtu')
         #nv = self.getNVertices()
@@ -289,7 +282,8 @@ class Mesh:
 
 
     def plotDeformed(self, displacement):
-        """ Function to plot a deformed mesh. For that the
+        """
+        Function to plot a deformed mesh. For that the
         arguments must include a (nodal) vector field that
         will be used to translate every vertex.
         """
@@ -333,7 +327,8 @@ class Mesh:
 
 
 class Node:
-    """The class Node is design to contain a vertex (its position), as
+    """
+    The class Node is design to contain a vertex (its position), as
     well as all the finite element solution at this point -- the degrees
     of freedom.
     """
@@ -359,11 +354,6 @@ class Node:
         certain element type.
         """
         dpn = el.theType.getDOFsPerNode()
-        #if not self.DOFS:
-        #    start = 0
-        #else:
-        #    start = len(self.DOFS)
-
         if (dpn > len(self.DOFS)):
             start = len(self.DOFS)
             for n in range(start, dpn):
@@ -445,7 +435,7 @@ class ElementType:
 
 class Model:
 
-    def __init__(self, aMesh, elmtTypes, cons, loads):
+    def __init__(self, aMesh, elmtTypes):
         """
         The Model class holds the Mesh and the data for the
         mechanical analysis. These include the elementTypes,
@@ -453,11 +443,11 @@ class Model:
         """
         self.mesh = aMesh
         self.nodes = []
-        self.constraints = cons
-        self.loading = loads
+        self.constraints = []
+        self.loading = []
         self.energy = 0.0
         self.eltypes = elmtTypes
-        labeledElmt = {}
+        self.labeledElmt = {}
 
         for label, vc in enumerate(aMesh.vertexCoordinates):
             self.nodes.append(Node(label, np.asarray(vc)))
@@ -473,16 +463,18 @@ class Model:
                         nn.append(self.nodes[n])
 
                     el = elmtTypes[setkey].createElement(theCell, nn)
-                    labeledElmt[cellLabel] = el
+                    self.labeledElmt[cellLabel] = el
                     for n in el.theNodes:
                         n.allocateDOFS(el)
 
-        self.elements = dict(sorted(labeledElmt.items()))
-        self.NDOFs = self.numberDOFs()
-        self.residual = np.zeros([self.NDOFs])
-        self.tangent = np.zeros([self.NDOFs, self.NDOFs])
-        self.sparseTangent = lil_matrix((self.NDOFs, self.NDOFs))
-        self.Bmatrix = np.zeros([len(self.elements), self.NDOFs])
+
+    def addConstraint(self, *, vertexset, dof, value, scaling="t"):
+        self.constraints.append((vertexset,
+                                 Constraint(dof=dof, value=value, scaling=scaling)))
+
+
+    def addLoading(self, *, vertexset, dof, value, scaling="t"):
+        self.loading.append((vertexset, Loading(dof=dof, value=value, scaling=scaling)))
 
 
     def assembleBmatrix(self, B, el, nel):
@@ -600,14 +592,14 @@ class Model:
 
         FILE_PATH = "./solution"
         try:
-            os.remove(FILE_PATH + ".vtu")
+            os.remove(FILE_PATH + "*.vtu")
         except:
             pass
 
         if step is not None:
             FILE_PATH = "./solution" + str(step)
 
-        print("Dumping solution to paraview file", FILE_PATH)
+        print(f"Dumping solution to paraview file {FILE_PATH}.vtu")
         unstructuredGridToVTK(FILE_PATH, x, y, z, connectivity = np.array(conn),
                               offsets = offset, cell_types = ctype,
                               cellData = cellData, pointData = pointData)
@@ -683,25 +675,15 @@ class Model:
         for k, el in self.elements.items():
             energy += el.integrateEnergy(time)
 
-        # for vertexsetName in self.loading.keys() :
-        #     for forcePair in self.loading[vertexsetName]:
-        #         nodeLabels = self.mesh.vertexsets[vertexsetName]
-        #         for label in nodeLabels:
-        #             nd  = self.getNode(label)
-        #             dof = nd.DOFS[forcePair[0]]
-        #             f   = forcePair[1]*time
-        #             if (dof > -1):
-        #                 self.residual[dof] -= f
-
-        for vertexsetName in self.loading.keys() :
-            load = self.loading[vertexsetName]
+        for vertexsetName, load in self.loading:
             nodeLabels = self.mesh.vertexsets[vertexsetName]
+            t = time
+            sc = eval(load.scaling, locals(),
+                      {"sin": math.sin, "cos": math.cos, "math": math})
             for label in nodeLabels:
                 nd = self.getNode(label)
                 u = nd.U[load.dof]
-                t = time
-                f = load.value * eval(load.scaling,locals(),
-                                      {'sqrt': math.sqrt, 'pow': math.pow, 'sin': math.sin})
+                f = load.value * sc
                 energy -= f*u
 
         self.energy = energy
@@ -720,29 +702,17 @@ class Model:
             DE = el.integrateDEnergy(time)
             self.assembleDEnergy(DE, el)
 
-        for vertexsetName in self.loading.keys() :
-            load = self.loading[vertexsetName]
+        for vertexsetName, load in self.loading:
             nodeLabels = self.mesh.vertexsets[vertexsetName]
+            t = time
+            sc = eval(load.scaling, locals(),
+                      {"sin": math.sin, "cos": math.cos, "math": math})
             for label in nodeLabels:
                 nd = self.getNode(label)
                 dof = nd.DOFS[load.dof]
-                t = time
-                sc = eval(load.scaling,locals(),
-                          {'sqrt': math.sqrt, 'pow': math.pow, 'sin': math.sin})
                 f = load.value * sc
                 if (dof > -1):
                     self.residual[dof] -= f
-
-
-        # for vertexsetName in self.loading.keys() :
-        #     for forcePair in self.loading[vertexsetName]:
-        #         nodeLabels = self.mesh.vertexsets[vertexsetName]
-        #         for label in nodeLabels:
-        #             nd  = self.getNode(label)
-        #             dof = nd.DOFS[forcePair[0]]
-        #             f   = forcePair[1]*time
-        #             if (dof > -1):
-        #                 self.residual[dof] -= f
 
 
     def integrateDDEnergy(self, time):
@@ -818,15 +788,18 @@ class Model:
         return LA.norm(self.residual)
 
 
-    def maximumElementValue(self, name):
+    def maximumABSElementValue(self, name):
         """
         Determines the maximum absolute value of the variable 'name' in all
         the elements of the model.
         """
+        label = -1
         large = -1e12
         for k, el in self.elements.items():
-            large = max(abs(el.result(name)), large)
-        return large
+            if (abs(el.result(name)) > large):
+                large = abs(el.result(name))
+                label = k
+        return large, label
 
 
     def maximumNodalDOFs(self):
@@ -857,33 +830,36 @@ class Model:
         return np.amax(np.absolute(self.getSolution()))
 
 
+    def minimumElementValue(self, name):
+        """
+        Determines the minimum value of the variable 'name' in all
+        the elements of the model and also returns the element label.
+        """
+        label = -1
+        small = 1e12
+        for k, el in self.elements.items():
+            if el.result(name) < small:
+                small = el.result(name)
+                label = k
+
+        return small, label
+
+
     def numberDOFs(self):
         """
         Numbers all the dofs in the model, starting from 0,
         and returning the total number of DOFs
         """
-        for vertexsetName in self.constraints.keys() :
-            for bcPair in self.constraints[vertexsetName]:
-                nodeLabels = self.mesh.vertexsets[vertexsetName]
-                for label in nodeLabels:
-                    nd = self.getNode(label)
-                    nd.constrainDOF(bcPair[0], bcPair[1])
+        for vertexsetName, constraint in self.constraints:
+            nodeLabels = self.mesh.vertexsets[vertexsetName]
+            for label in nodeLabels:
+                nd = self.getNode(label)
+                nd.constrainDOF(constraint.dof, constraint.value)
 
         nextdof = 0
         for k, el in self.elements.items():
             nextdof = el.numberDOFs(nextdof)
         return nextdof
-
-
-    # def postprocess(self):
-    #     pp = pv.read('solution.vtu')
-    #     while (var := self.postprocessorQuestion(pp.array_names)) != -1:
-    #         pp.plot(scalars = pp.array_names[var],
-    #                 component = 0,
-    #                 cpos='xy',
-    #                 show_scalar_bar = True,
-    #                 cmap = 'turbo',
-    #                 show_edges = True)
 
 
     def postprocessorQuestion(self, vars):
@@ -904,6 +880,14 @@ class Model:
         return ia
 
 
+    def prepareAnalysis(self):
+        self.elements = dict(sorted(self.labeledElmt.items()))
+        self.NDOFs = self.numberDOFs()
+        self.residual = np.zeros([self.NDOFs])
+        self.tangent = np.zeros([self.NDOFs, self.NDOFs])
+        self.sparseTangent = lil_matrix((self.NDOFs, self.NDOFs))
+        self.Bmatrix = np.zeros([len(self.elements), self.NDOFs])
+
     def print(self):
         """
         Print essential information of the computational model.
@@ -919,12 +903,8 @@ class Model:
         #print("Storage of sparse     : ", self.sparseTangent.data.nbytes+
         #      self.sparseTangent.indptr.nbytes +
         #      self.sparseTangent.indices.nbytes)
-
-        c = 0
-        for vertexsetName in self.constraints.keys() :
-            c += len(self.constraints[vertexsetName])
-        print("Number of constraints : ", c)
-        print("Number of loadings.   : ", len(self.loading))
+        print("Number of constraints : ", len(self.constraints))
+        print("Number of loadings    : ", len(self.loading))
         print("Total volume          : ", self.integrateVolume())
 
 
@@ -939,9 +919,12 @@ class Model:
         print("\n-----------------------------------------------------------")
         print("                Maximum values")
         print("-----------------------------------------------------------")
-        print("Maximum selftress in bars (absolute value): ",
-              self.maximumElementValue("sigma"))
+
+        mm, label = self.maximumABSElementValue("sigma")
+        print(f"Maximum stress (absolute value): {mm} (element {label})")
         print("Maximum degrees of freedom:", self.maximumNodalDOFs())
+        safety, label = self.minimumElementValue("safety")
+        print(f"Minimum safety factor: {safety} (element {label})")
 
 
     def printElements(self):
@@ -985,7 +968,6 @@ class Model:
         """
         Print the tangent stiffness.
         """
-        #print("DDEnergy    : ", self.tangent)
         print("DDEnergy    : ", self.sparseTangent.todense() )
 
 
@@ -1006,6 +988,7 @@ class Analysis:
 
     def __init__(self, aModel):
         self.model = aModel
+        self.model.prepareAnalysis()
         self.x = []
 
 
@@ -1059,36 +1042,41 @@ class Analysis:
 
 
 class StaticLinearAnalysis(Analysis):
-    def __init__(self, theModel):
-        """ Constructor for the static analysis. It must be called
+    def __init__(self, theModel, dt=1.0, tf=1.0):
+        """
+        Constructor for the static analysis. It must be called
         with a model, built elsewhere.
         """
-        # read the model in the parent class
         super().__init__(theModel)
+        self.dt = dt
+        self.tf = tf
 
 
     def solve(self):
-        # solve the linearized problem
-        self.model.integrateDEnergy(0.0)
-        self.model.integrateDDEnergy(0.0)
-        self.findLinearizedSolution()
-        self.localizeSolutionToNodes(1.0)
+        nsteps = int(self.tf//self.dt)
+        t = 0.0
+        self.model.dumpSolution(0)
+        for k in range(nsteps):
+            t += self.dt
 
-        # Postprocessing
-        print("\n-----------------------------------------------------------")
-        print("       Solving the linear systems of equations K U = F")
-        print("-----------------------------------------------------------")
-        self.model.integrateEnergy(1.0)
-        self.model.integrateDEnergy(1.0)
-        print("Energy in the solution: ", self.model.energy)
-        print("Error in the solution: ", self.model.errorNorm(1.0))
+            print("\n-----------------------------------------------------------")
+            print("     Solving step number", k+1, ", time:", t)
+            print("-----------------------------------------------------------")
+            self.model.integrateEnergy(t)
+            self.model.integrateDEnergy(t)
+            self.model.integrateDDEnergy(t)
+            print("Effective energy in the solution: ", self.model.energy)
+            print("Error in the transient solution: ",
+                  self.model.errorNorm(t))
 
-        #self.model.mesh.plot()
-        #self.model.mesh.plotDeformed(self.model.getSolution())
-        #vtkfile = _openParaviewfile()
-        #self.model.mesh.dumpMeshForParaview(vtkfile)
-        self.model.dumpSolution()
-        #_closeParaviewFile(vtkfile)
+            self.findLinearizedSolution()
+            self.localizeSolutionToNodes(t)
+            self.model.integrateEnergy(t)
+            self.model.integrateDEnergy(t)
+            print("Energy in the solution: ", self.model.energy)
+            print("Error in the solution: ", self.model.errorNorm(t))
+            self.model.dumpSolution()
+
 
     def resetSolution(self):
         pass

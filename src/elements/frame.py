@@ -377,14 +377,7 @@ class frameElement(Element):
             Gstress = min(Gstress, Gstress_k)
             Gbuck = min(Gbuck, Gbuck_k)
 
-        # buckling safefy factor for the whole beam
-        print("\nBuckling safety factor: {0:.6g}".format(Gbuck))
-
-        # stress safefy factor for the whole beam
-        print("Stress safety factor: {0:.6g}".format(Gstress))
-
         fglobal = min(Gbuck, Gstress)
-        print("Global safety factor: {0:.6g}".format(fglobal))
 
         # compute some values at the center, for plotting
         qp = quadPoints[1]

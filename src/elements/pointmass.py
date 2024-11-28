@@ -61,7 +61,7 @@ class pointmassElement(Element):
         self.volume = 0.0
 
 
-    def integrateEnergy(self):
+    def integrateEnergy(self, time):
         """
         Integrates the total potential energy in the pointmass element.
         Returns it value.
@@ -78,7 +78,7 @@ class pointmassElement(Element):
         return energy
 
 
-    def integrateDEnergy(self):
+    def integrateDEnergy(self, time):
         """
         Compute and return the contribution of the element to
         the equilibrium equations.
@@ -93,12 +93,37 @@ class pointmassElement(Element):
         return -fext.T
 
 
-    def integrateDDEnergy(self):
+    def integrateDDEnergy(self, time):
         """
         Compute and return the element stiffness matrix.
         """
         K = np.zeros((2,2))
         return K
+
+
+    def integrateJet(self, dt, time):
+        node0 = self.theNodes[0]
+        V = np.array([node0.V[0], node0.V[1]])
+        Vn = np.array([node0.Vold[0], node0.Vold[1]])
+        m = self.theType.m
+
+        jet = 0.5*m*np.matmul(V-Vn, V-Vn)
+        return jet
+
+
+    def integrateDJet(self, dt, time):
+        node0 = self.theNodes[0]
+        V = np.array([node0.V[0], node0.V[1]])
+        Vn = np.array([node0.Vold[0], node0.Vold[1]])
+        m = self.theType.m
+        DJ = m/dt * (V-Vn)
+        return DJ
+
+
+    def integrateDDJet(self, dt, time):
+        m = self.theType.m
+        DDJ = 1.0/(dt*dt)*M
+        return DDJ
 
 
     def print(self):
