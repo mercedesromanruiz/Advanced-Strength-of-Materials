@@ -122,8 +122,8 @@ class pointmassElement(Element):
 
     def integrateDDJet(self, dt, time):
         m = self.theType.m
-        DDJ = 1.0/(dt*dt)*M
-        return DDJ
+        DDJ = 1.0/(dt*dt)*m
+        return np.eye(2)*DDJ
 
 
     def print(self):

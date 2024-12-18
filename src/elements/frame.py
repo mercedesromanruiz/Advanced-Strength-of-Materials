@@ -45,7 +45,7 @@ class FrameCreator(ElementCreator):
         # should not expect smooth colors
         self.resultNames = ("N", "epsilon",
                             "M", "kappa",
-                            "safety")
+                            "safety", "area")
 
 
     def createElement(self, cell, nodes):
@@ -402,6 +402,9 @@ class frameElement(Element):
 
         elif (name == "safety"):
             r = fglobal
+
+        elif (name == "area"):
+            r = A
 
         else:
             r = 0.0

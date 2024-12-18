@@ -836,11 +836,13 @@ class Model:
         the elements of the model and also returns the element label.
         """
         label = -1
-        small = 1e12
+        small = float('inf')
         for k, el in self.elements.items():
-            if el.result(name) < small:
-                small = el.result(name)
-                label = k
+            et = el.theType
+            if (name in et.resultNames):
+                if el.result(name) < small:
+                    small = el.result(name)
+                    label = k
 
         return small, label
 
@@ -897,7 +899,7 @@ class Model:
         print("                Model information")
         print("--------------------------------------------------------")
         print("Number of nodes       : ", len(self.nodes))
-        print("Number of elements    : ", len(self.elements))
+        print("Number of eltypes     : ", len(self.eltypes))
         print("Number of DOFs        : ", self.getNDOFs())
         # print("Storage of tangent    : ", self.tangent.size * self.tangent.itemsize)
         #print("Storage of sparse     : ", self.sparseTangent.data.nbytes+
@@ -1052,22 +1054,27 @@ class StaticLinearAnalysis(Analysis):
         self.tf = tf
 
 
-    def solve(self):
+    def solve(self, label=None):
         nsteps = int(self.tf//self.dt)
         t = 0.0
         self.model.dumpSolution(0)
         for k in range(nsteps):
             t += self.dt
 
+            if (label):
+                ss = label
+            else:
+                ss = k+1
+
             print("\n-----------------------------------------------------------")
-            print("     Solving step number", k+1, ", time:", t)
+            print("     Static analysis. Solving step number", ss, ", time:", t)
             print("-----------------------------------------------------------")
             self.model.integrateEnergy(t)
             self.model.integrateDEnergy(t)
             self.model.integrateDDEnergy(t)
+
             print("Effective energy in the solution: ", self.model.energy)
-            print("Error in the transient solution: ",
-                  self.model.errorNorm(t))
+            print("Error in the solution: ", self.model.errorNorm(t))
 
             self.findLinearizedSolution()
             self.localizeSolutionToNodes(t)
@@ -1075,7 +1082,7 @@ class StaticLinearAnalysis(Analysis):
             self.model.integrateDEnergy(t)
             print("Energy in the solution: ", self.model.energy)
             print("Error in the solution: ", self.model.errorNorm(t))
-            self.model.dumpSolution()
+            self.model.dumpSolution(step=ss)
 
 
     def resetSolution(self):
@@ -1121,3 +1128,349 @@ class TransientAnalysis(Analysis):
                   self.model.jetNorm(self.dt, t))
             self.model.dumpSolution(k+1)
             self.model.commitCurrentState()
+
+
+class EnergySteppingAnalysis(Analysis):
+    def __init__(self, theModel, dt, tf):
+        """ Template for the solution of a linear transient analysis.
+        dt : the time step size
+        tf : the final time of the integration
+        """
+        super().__init__(theModel)
+        self.dt = dt
+        self.tf = tf
+        self.model.print()
+        self.TOL = 1e-5
+        self.OMT = 1.0-TOL
+
+    def energySteppingFindT(q0, p0, L0, h, target,
+                            rtol=1e-6, xtol=1e-5, maxiter=15, debug=False):
+        """
+        Find the time at which the system crosses the next level set of the
+        terraced potential energy when the system moves in the direction of the
+        velocity.
+
+        The function uses the secant method when it detects crossing a terraced level
+        in the direction of the gradient. In a basin, it switches to brendt method.
+
+        q0, p0: initial position and momentum
+        L0: initial level of terraced potential (need not be equal to V(q0) !!)
+        h:  terraced potential steps
+        target: target distribution. A function that must have two methods implemented
+                target.potential(q) and target.gradPotential(q)
+        rtol: relative tolerace in the function evaluation for convergence of root
+        xtol: relative tolerance in the unknown for convergence of root finding
+        maxiter: maximum number of iterations in root finding
+
+        """
+        V0 = L0*h
+        W0 = target.potential(q0)
+        g0 = target.gradPotential(q0)
+        gradNorm = np.linalg.norm(g0)
+        v0 = p0
+        v0norm = np.linalg.norm(v0)
+        a0 = np.dot(v0, g0)
+
+        if debug:
+            print("    Find T, L0: {:d}, L(q0): {:.4e}, angle: {:.4e}".format(
+                L0, W0/h, a0))
+
+        # find bracket [t0, t] where energy step is met. Determine up/low bounds
+        Gtop = lambda z: target.potential(q0+z*v0) - V0 - h
+        Gbot = lambda z: target.potential(q0+z*v0) - V0
+
+        dx = min(h/gradNorm,1.0)
+        t = 1.0e-3*dx/v0norm
+
+        # choose t0 to be slightly positive, but make sure that
+        # the starting point is good ... Gtop<0 and Gbot>0
+        t0 = t
+        giter = 0
+        maxgiter = 10
+        while ((Gtop(t0)>0 or Gbot(t0)<0) and giter<maxgiter):
+            t0 *= 0.5
+            giter += 1
+
+        if giter == maxgiter:
+            print("\n Number of splits for initial t is too large.", giter)
+            print(" Gtop(0): {:.4e}, Gbot(0): {:.4e}".format(Gtop(0), Gbot(0)))
+            sys.exit(0)
+
+        # determine whether the trajectory crosses up or downward energy
+        direction = 0
+        maxgiter = 10*maxiter
+        giter = 0
+
+        Gtop0 = Gtop(t0)
+        Gbot0 = Gbot(t0)
+
+        while (Gtop(t)*Gtop0>0 and Gbot(t)*Gbot0>0 and giter<maxgiter):
+            t *= 1.61
+            giter += 1
+
+        if giter == maxgiter:
+            print("\n Number of iterations in up/down detection is too large.", giter)
+            sys.exit(0)
+        elif (Gtop(t)*Gtop0<0):
+            direction = +1
+            G = Gtop
+        else:
+            direction = -1
+            G = Gbot
+
+        if debug and direction==1:
+            print("    Gtop[{:.4e},{:,.4e}] = [{:.4e},{:,.4e}], dir={:,.1g}".format(
+                        0, t, Gtop(0), Gtop(t), direction))
+            print("    Gtop[{:.4e},{:,.4e}] = [{:.4e},{:,.4e}], dir={:,.1g}".format(
+                        t0, t, Gtop(t0), Gtop(t), direction))
+
+        if debug and direction==-1:
+            print("    Gbot[{:.4e},{:,.4e}] = [{:.4e},{:,.4e}], dir={:,.1g}".format(
+                        0, t, Gbot(0), Gbot(t), direction))
+            print("    Gbot[{:.4e},{:,.4e}] = [{:.4e},{:,.4e}], dir={:,.1g}".format(
+                        t0, t, Gbot(t0), Gbot(t), direction))
+
+        # backup initial point to ensure sign change is in bracket
+        #t0 = -direction*mysign(a0)*1e-3*dx/v0norm
+
+        if (G(t0)*G(t)>=0):
+            print("\n*Gtop[{:.4e},{:,.4e}] = [{:.4e},{:,.4e}], dir={:,.1g}".format(
+                            t0, t, Gtop(t0), Gtop(t), direction))
+            print("*Gbot[{:.4e},{:,.4e}] = [{:.4e},{:,.4e}], dir={:,.1g}".format(
+                            t0, t, Gbot(t0), Gbot(t), direction))
+            print("*G   [{:.4e},{:,.4e}] = [{:.4e},{:,.4e}], dir={:,.1g}".format(
+                            t0, t, G(t0), G(t), direction))
+
+        secant = False
+        if secant:
+            sol = root_scalar(G, x0=t0, x1=t, method="secant",
+                              rtol=rtol, xtol=xtol*dx, maxiter=maxiter)
+        else:
+            sol = root_scalar(G, bracket=[t0,t], method="brentq",
+                              rtol=rtol, maxiter=maxiter)
+
+        if (not(sol.converged) and debug):
+            print("\nFirst trial error in root finding for energy-stepping update")
+            print("Cause of failure:", sol.flag)
+
+        if debug:
+            print(" -> Time increment found {0:.4f} ({1:d} iterations), {2:s}".format(
+                sol.root, sol.iterations, sol.flag))
+
+        if (sol.root < 1e-7):
+            print("    dt {:.4e} is negative or suspiciously small...".format(sol.root))
+            print("    Find T, L0: {:.4e}, L(q0): {:.4e}, Grad: {:.4e}".format(
+                L0, W0/h, gradNorm))
+            sys.exit(0)
+
+        return sol.root
+
+
+    def energySteppingProposal(q0, p0, h, T, target, debug=False):
+        """
+        Perform integration for a period of time of length T of a Hamiltonian system
+        usign the energy-stepping method. In this method, the total energy
+        is terraced in steps of height h.
+
+        input:
+          - q0, p0 : initial phase coordinates
+          - h: terrace height
+          - T: integrating time in each step
+          - target: target probability distribution
+
+        returns:
+          - position q, momentum p
+          - terraced potential level at time T
+          - sliding motions
+          - the total time integrated
+
+        notes:
+           - the potential energy need not be the potential energy at q due
+             to the terraced formulation
+           - sliding motions: movements that changed q (not simply
+             climbed or dropped a step. They require a gradV evaluation)
+
+           Vn: terraced potential at qn = h * floor(V(qn))
+           Ln: steps of the terraced potential at qn ... floor(Vn/h)
+           Wn: potential at qn = V(qn)
+           angle an: angle between the velocity vn and the gradient gn
+        """
+        tf = 0.0
+        L0 = math.floor(target.potential(q0)/h)
+        V0 = L0*h
+        K0 = 0.5*np.dot(p0, p0)
+
+        qn = np.copy(q0)
+        vn = np.copy(p0)
+        Ln = L0
+        Vn = V0
+        case = 0
+        slided = 0
+        step = 1
+
+        while tf<T:
+
+            # note the difference between Vn, the terraced energy and
+            # Wn, the true energy at qn
+            gn = target.gradPotential(qn)
+            gradnorm = np.linalg.norm(gn)
+            nn = gn/gradnorm
+            an = np.dot(vn, nn)
+            Wn = target.potential(qn)
+            dt = 0.0
+
+            if debug:
+                print("\n>>> Integrate time step {:d}".format(step))
+                print("    Initial data. (h: {:.4e})".format(h))
+                print("    Vn: {:.4e}, Ln: {:d}, Wn: {:.4e}, L(qn): {:.4e}, angle: {:.4e}".format(
+                    Vn, Ln, Wn, Wn/h, an))
+                print("    Test1, (Wn-Vn)/h: {:.4e}  - {:}".format((Wn-Vn)/h, Wn-Vn>= OMT*h))
+                print("    Test2, an: {:.4e}         - {:}".format(an, an>0))
+                print("    Test3, an*an/(2*h): {:.4e}- {:}".format(an*an/(2*h), an*an>2*h))
+
+            # compute an intermediate position qh and velocity vh, placing the point on a terrace
+            # with the velocity away from any wall
+            # point is facing wall and has enough energy to go up
+            if (Wn-Vn >= OMT*h and an>0.0 and an*an >= 2.0*h):
+                vh = vn + (-an + math.sqrt(an*an-2.0*h))*nn
+                Lh = Ln + 1
+                if debug: print("    Climbed wall. Initial level: {:d}".format(Lh))
+
+            # point is facing wall, but has no energy to go up
+            elif (Wn-Vn >= OMT*h and an>0.0 and an*an<2.0*h):
+                vh = vn - 2.0*an*nn
+                Lh = Ln
+                if debug: print("    Bumped wall. Initial level: {:d}".format(Lh))
+
+            # point is facing cliff, so go down
+            elif (Wn-Vn < TOL*h and an<0.0):
+                vh = vn + (-an - math.sqrt(an*an+2.0*h))*nn
+                Lh = Ln - 1
+                if debug: print("    Fell cliff. Initial level: {:d}".format(Lh))
+
+            # point is pointing in the right direction
+            else:
+                vh = np.copy(vn)
+                Lh = Ln
+                if debug: print("    Moving ok. Initial level: {:d}".format(Lh))
+
+            # point is in the flat area and with the right direction
+            # Move until hit wall or fall cliff
+            slided += 1
+            qh = np.copy(qn)
+            rtol = h*TOL/max(1000,gradnorm)
+            dt = energySteppingFindT(qh, vh, Lh, h, target, rtol=rtol, debug=debug)
+
+            if (tf+dt > T):
+                dt = T-tf
+                if debug: print("    Slide and stop (dt={:.4e})".format(dt), end="")
+
+            q1 = qh + vh*dt
+            v1 = np.copy(vh)
+            L1 = Lh
+            V1 = Lh*h
+
+            Kn = 0.5*np.dot(vn,vn)
+            En = Vn + Kn
+
+            K1 = 0.5*np.dot(v1,v1)
+            E1 = V1 + K1
+
+            if debug:
+                print("    End of update with dt: {:5g}".format(dt))
+                print("    Ln: {:d}, L(qn): {:.4g}, Kn: {:.4e}".format(
+                    Ln, target.potential(qn)/h, Kn))
+                print("    L1: {:d}, L(q1): {:.4g}, K1: {:.4e}".format(
+                    L1, target.potential(q1)/h, K1))
+
+            if (math.fabs(En-E1)>1e-4*h):
+                print("Error in the energy update! ", E1-En, ", case:", case)
+                print("--")
+                sys.exit(5)
+
+            qn = np.copy(q1)
+            vn = np.copy(v1)
+            Vn = V1
+            Ln = L1
+            tf += dt
+            step += 1
+
+        if debug:
+            print("\n*** Proposal is computed")
+            print("    L1: {:.4e}, L(q1): {:.4e}, K1: {:.4e}".format(
+                L1, target.potential(q1)/h, K1))
+            print("    H0: {:.4e}, H1: {:.4e}".format(V0+K0, L1*h+K1))
+
+        return q1, v1, L1, slided, tf
+
+
+    def energySteppingMC(target, initial, iterations=5000,
+                         h=0.1, T=1.0, debug=False):
+        """
+        Generate a random sample distributed according to a
+        given probability distribution using the Energy-Stepping MC method.
+
+        Inputs:
+          - target: the distribution to sample from.
+          - initial: generator of the first sample.
+          - iterations: number of samples in the Markov chain.
+          - h: potential energy terrace size
+          - T: time to integrate in each proposal
+          - debug: optional debug for print information
+
+        Returns:
+          - the chain
+          - the ratio of slided motions / MC iterations
+          - the number of gradV evaluations
+        """
+        samples = initial
+        slided_total = 0
+        dim = initial.shape[1]
+        eye = np.identity(dim)
+        zz = np.zeros(dim)
+
+        for it in progressbar(range(iterations)):
+            qn = samples[-1]
+            pn = np.random.multivariate_normal(mean=zz, cov=eye)
+
+            if debug:
+                print("\n===========================================")
+                print("              New proposal ({:d})".format(it))
+                print("===========================================")
+
+            qn1, pn1, Ln1, slided, tf = energySteppingProposal(qn, pn, h, T,
+                                                               target, debug)
+
+            samples = np.vstack((samples, qn1))
+            slided_total += slided
+
+        return samples, slided_total/iterations, slided_total
+
+
+        def solve(self):
+            nsteps = int(self.tf//self.dt)
+            t = 0.0
+            self.model.dumpSolution(0)
+            for k in range(nsteps):
+                t += self.dt
+                print("\n-----------------------------------------------------------")
+                print("     Solving step number", k+1, ", time:", t)
+                print("-----------------------------------------------------------")
+                self.model.integrateJet(self.dt, t)
+                self.model.integrateDJet(self.dt, t)
+                print("Effective energy in the solution: ", self.model.energy)
+                print("Error in the transient solution: ",
+                      self.model.jetNorm(self.dt, t))
+
+                # solve the linearized problem
+                self.model.integrateDDJet(self.dt, t)
+                self.findLinearizedSolution()
+                print("\n...... Solving the linear system of equations K U = F .......\n")
+                self.localizeSolutionToNodes(self.dt)
+                self.model.integrateJet(self.dt, t)
+                self.model.integrateDJet(self.dt, t)
+                print("Effective energy in the solution: ", self.model.energy)
+                print("Error in the transient solution: ",
+                      self.model.jetNorm(self.dt, t))
+                self.model.dumpSolution(k+1)
+                self.model.commitCurrentState()
