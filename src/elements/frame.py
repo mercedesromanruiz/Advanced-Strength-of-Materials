@@ -221,7 +221,7 @@ class frameElement(Element):
 
     def localForce(self, time):
         rho = self.theType.rho
-        fx = self.theType.fx
+        fx = self.theType.fx * math.sin(math.pi * 0.5 * time)
         fy = self.theType.fy
         g = self.theType.g
         A = self.theType.area

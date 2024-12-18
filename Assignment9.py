@@ -5,6 +5,7 @@ import math
 from fem import *
 from collections import defaultdict
 from elements.frame import FrameCreator
+from elements.truss import TrussCreator
 from elements.pointmass import PointmassCreator
 
 # ----------------------------------------------------
@@ -77,30 +78,30 @@ def createModel():
         (30, 19),       # 27: Branch
         (30, 13),       # 28: Branch
         (22, 12),       # 29: Branch
-        (2,    ),       # 30: Light Bulb
-        (3,    ),       # 31: Light Bulb
-        (4,    ),       # 32: Light Bulb
-        (5,    ),       # 33: Light Bulb
-        (6,    ),       # 34: Light Bulb
-        (7,    ),       # 35: Light Bulb
-        (8,    ),       # 36: Light Bulb
-        (9,    ),       # 37: Light Bulb
-        (10,    ),      # 38: Light Bulb
-        (11,    ),      # 39: Light Bulb
-        (12,    ),      # 40: Light Bulb
-        (13,    ),      # 41: Light Bulb
-        (14,    ),      # 42: Light Bulb
-        (15,    ),      # 43: Light Bulb
-        (16,    ),      # 44: Light Bulb
-        (17,    ),      # 45: Light Bulb
-        (18,    ),      # 46: Light Bulb
-        (19,    ),      # 47: Light Bulb
-        (20,    ),      # 48: Light Bulb
-        (21,    ),      # 49: Light Bulb
+        (2,),           # 30: Light Bulb
+        (3,),           # 31: Light Bulb
+        (4,),           # 32: Light Bulb
+        (5,),           # 33: Light Bulb
+        (6,),           # 34: Light Bulb
+        (7,),           # 35: Light Bulb
+        (8,),           # 36: Light Bulb
+        (9,),           # 37: Light Bulb
+        (10,),          # 38: Light Bulb
+        (11,),          # 39: Light Bulb
+        (12,),          # 40: Light Bulb
+        (13,),          # 41: Light Bulb
+        (14,),          # 42: Light Bulb
+        (15,),          # 43: Light Bulb
+        (16,),          # 44: Light Bulb
+        (17,),          # 45: Light Bulb
+        (18,),          # 46: Light Bulb
+        (19,),          # 47: Light Bulb
+        (20,),          # 48: Light Bulb
+        (21,)           # 49: Light Bulb
     ]
 
     vertexsets = {}
-    vertexsets["Unions"] = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30)
+    vertexsets["Unions"] = (0, 1, 22, 23, 24, 25, 26, 27, 28, 29, 30)
 
     cellsets = {}
     cellsets["Trunck"] = (0, 1, 2)
@@ -118,36 +119,35 @@ def createModel():
     # Model: elements types, constraints, and loading on the mesh
     # ----------------------------------------------------
 
-    elmtTypes = {}
     g = 9.8
-    E = 250e6 # Elastic Modulus Steel
+    E = 250e9 # Elastic Modulus Steel
     sigmae = 180e6 # Strength
     density = 7800 # Density
 
-    R_Trunck = 30e-2
+    R_Trunck = 80e-2
     A_Trunck = math.pi * (R_Trunck)**2
     I_Trunck = math.pi / 4 * R_Trunck**4
     W_Trunck = I_Trunck / R_Trunck
 
-    R_Limb = 15e-2
+    R_Limb = 40e-2
     A_Limb = math.pi * (R_Limb)**2
     I_Limb = math.pi / 4 * R_Limb**4
     W_Limb = I_Limb / R_Limb
 
-    R_Branch = 7.5e-2
+    R_Branch = 20e-2
     A_Branch = math.pi * (R_Branch)**2
     I_Branch = math.pi / 4 * R_Branch**4
     W_Branch = I_Branch / R_Branch
 
+    elmtTypes = {}
     elmtTypes["Trunck"] = FrameCreator({"E": E,
                                         "A": A_Trunck,
                                         "I": I_Trunck,
                                         "fx": 30,
                                         "fy": 0,
                                         "gravity": g,
-                                        "density": density,
-                                        "sigmae": sigmae,
-                                        "w": W_Trunck})
+                                        "W": W_Trunck,
+                                        "sigmae": sigmae})
 
     elmtTypes["Limb"] = FrameCreator({"E": E,
                                       "A": A_Limb,
@@ -155,9 +155,8 @@ def createModel():
                                       "fx": 30,
                                       "fy": 0,
                                       "gravity": g,
-                                      "density": density,
-                                      "sigmae": sigmae,
-                                      "w": W_Limb})
+                                      "W": W_Limb,
+                                      "sigmae": sigmae})
 
     elmtTypes["Branch"] = FrameCreator({"E": E,
                                         "A": A_Branch,
@@ -165,11 +164,10 @@ def createModel():
                                         "fx": 30,
                                         "fy": 0,
                                         "gravity": g,
-                                        "density": density,
-                                        "sigmae": sigmae,
-                                        "w": W_Branch})
+                                        "W": W_Branch,
+                                        "sigmae": sigmae})
 
-    elmtTypes["LightBulb"] = PointmassCreator({"mass": 3000,
+    elmtTypes["LightBulb"] = PointmassCreator({"mass": 3.0,
                                                "gravity": g})
 
     theModel = Model(theMesh, elmtTypes)
@@ -179,8 +177,10 @@ def createModel():
     return theModel
 
 def main():
+    dt = 0.01
+    tf = 1.0
     model = createModel()
-    analysis = StaticLinearAnalysis(model)
+    analysis = TransientAnalysis(model, dt, tf)
     analysis.solve()
     model.printDetailed()
 
