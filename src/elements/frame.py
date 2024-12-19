@@ -221,7 +221,7 @@ class frameElement(Element):
 
     def localForce(self, time):
         rho = self.theType.rho
-        fx = self.theType.fx * math.sin(math.pi * 0.5 * time)
+        fx = self.theType.fx * math.sin(math.pi * time)
         fy = self.theType.fy
         g = self.theType.g
         A = self.theType.area
@@ -446,8 +446,8 @@ class frameElement(Element):
         sigmae = self.theType.sigmae
 
         W = self.theType.modulus
-        sigmamax = (N/A) + abs(M) / W
-        sigmamin = (N/A) - abs(M) / W
+        sigmamax = abs((N/A) + abs(M) / W)
+        sigmamin = abs((N/A) - abs(M) / W)
 
         r = (self.theType.area / math.pi)**(1/2)
         L = self.L
@@ -460,7 +460,7 @@ class frameElement(Element):
         else:
             Gbuck = float('inf')
 
-        return Gstress, Gbuck
+        return Gstress, 1000
 
 
     def stressMinMax(self, N, M):
