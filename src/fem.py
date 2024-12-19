@@ -8,21 +8,17 @@ Classes for finite element analysis in pyris
 """
 
 import numpy as np
+import glob
 import math
+import os
 from numpy import linalg as LA
 from scipy.sparse import lil_matrix
 from scipy.sparse.linalg import spsolve
-import os
 from pyevtk.hl import *
 from pyevtk.vtk import *
 
 
 def _openParaviewfile():
-    FILE_PATH = "./solution"
-    try:
-        os.remove(FILE_PATH + ".vtu")
-    except:
-        pass
     w = VtkFile(FILE_PATH, VtkUnstructuredGrid)
     return w
 
@@ -193,12 +189,6 @@ class Mesh:
         the finite element problem. This file can be used by Paraview --but
         not only this software-- to view the model and its solution.
         """
-        FILE_PATH = "./mesh"
-        try:
-            os.remove(FILE_PATH + ".vtu")
-        except:
-            pass
-
         x = np.zeros(self.getNVertices())
         y = np.zeros(self.getNVertices())
         z = np.zeros(self.getNVertices())
@@ -590,14 +580,8 @@ class Model:
                 cd[e] = elmt.result(name)
             cellData[name] = cd
 
-        FILE_PATH = "./solution"
-        try:
-            os.remove(FILE_PATH + "*.vtu")
-        except:
-            pass
-
         if step is not None:
-            FILE_PATH = "./solution" + str(step)
+            FILE_PATH = f"./solution{step:04}"
 
         print(f"Dumping solution to paraview file {FILE_PATH}.vtu")
         unstructuredGridToVTK(FILE_PATH, x, y, z, connectivity = np.array(conn),
@@ -1053,11 +1037,22 @@ class StaticLinearAnalysis(Analysis):
         self.dt = dt
         self.tf = tf
 
+        FILE_PATH = "./solution"
+        try:
+            for file in glob.glob(FILE_PATH + "*.vtu"):
+                os.remove(file)
+        except:
+            pass
+
+
 
     def solve(self, label=None):
         nsteps = int(self.tf//self.dt)
         t = 0.0
-        self.model.dumpSolution(0)
+
+        if (label is None):
+            self.model.dumpSolution(0)
+
         for k in range(nsteps):
             t += self.dt
 
@@ -1099,6 +1094,13 @@ class TransientAnalysis(Analysis):
         self.dt = dt
         self.tf = tf
         self.model.print()
+
+        FILE_PATH = "./solution"
+        try:
+            for file in glob.glob(FILE_PATH + "*.vtu"):
+                os.remove(file)
+        except:
+            pass
 
 
     def solve(self):
