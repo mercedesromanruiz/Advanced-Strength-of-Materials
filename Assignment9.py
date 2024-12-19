@@ -124,17 +124,17 @@ def createModel():
     sigmae = 180e6 # Strength
     density = 7800 # Density
 
-    R_Trunck = 20e-2
+    R_Trunck = 6e-2
     A_Trunck = math.pi * (R_Trunck)**2
     I_Trunck = math.pi / 4 * R_Trunck**4
     W_Trunck = I_Trunck / R_Trunck
 
-    R_Limb = 10e-2
+    R_Limb = 3e-2
     A_Limb = math.pi * (R_Limb)**2
     I_Limb = math.pi / 4 * R_Limb**4
     W_Limb = I_Limb / R_Limb
 
-    R_Branch = 5e-2
+    R_Branch = 1.5e-2
     A_Branch = math.pi * (R_Branch)**2
     I_Branch = math.pi / 4 * R_Branch**4
     W_Branch = I_Branch / R_Branch
@@ -180,8 +180,8 @@ def createModel():
     return theModel
 
 def main():
-    dt = 1.0
-    tf = 1.0
+    dt = 0.1
+    tf = 100.0
     model = createModel()
     analysis = TransientAnalysis(model, dt, tf)
     analysis.solve()
