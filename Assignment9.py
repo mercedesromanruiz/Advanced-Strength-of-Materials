@@ -181,7 +181,7 @@ def createModel():
 
 def main():
     dt = 0.1
-    tf = 100.0
+    tf = 10.0
     model = createModel()
     analysis = TransientAnalysis(model, dt, tf)
     analysis.solve()
